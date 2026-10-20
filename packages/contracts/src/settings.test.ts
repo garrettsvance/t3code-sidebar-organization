@@ -684,6 +684,13 @@ describe("ClientSettings sidebar", () => {
     );
   });
 
+  it("keeps grouping the sidebar by project opt-in and patchable", () => {
+    expect(decodeClientSettings({}).sidebarGroupByProject).toBe(false);
+    expect(decodeClientSettingsPatch({ sidebarGroupByProject: true }).sidebarGroupByProject).toBe(
+      true,
+    );
+  });
+
   it("keeps unpin confirmation opt-in and patchable", () => {
     expect(decodeClientSettings({}).confirmThreadUnpin).toBe(false);
     expect(decodeClientSettingsPatch({ confirmThreadUnpin: true }).confirmThreadUnpin).toBe(true);

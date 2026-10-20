@@ -329,6 +329,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "group-by-project",
+    title: "Group by project",
+    to: "/settings/general",
+    searchTerms: ["sidebar active threads sections headers color divider"],
+  },
+  {
     id: "auto-settle-inactive-threads",
     title: "Auto-settle inactive threads",
     to: "/settings/general",

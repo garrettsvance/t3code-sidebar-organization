@@ -552,6 +552,22 @@ export function filterSidebarV2VisibleThreads<
   );
 }
 
+// Groups sit in the order of their first thread and threads keep their order within a group, so
+// the list only moves when a project's top thread changes.
+export function groupThreadsByProject<T>(
+  threads: readonly T[],
+  groupKeyOf: (thread: T) => string,
+): T[] {
+  const groups = new Map<string, T[]>();
+  for (const thread of threads) {
+    const key = groupKeyOf(thread);
+    const group = groups.get(key);
+    if (group) group.push(thread);
+    else groups.set(key, [thread]);
+  }
+  return [...groups.values()].flat();
+}
+
 export function getSidebarForkParentThreadId(
   thread: Pick<SidebarThreadSummary, "forkedFrom" | "lineage">,
 ) {

@@ -574,6 +574,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? ["Working section"]
       : []),
+    ...(settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject
+      ? ["Group by project"]
+      : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? ["Auto-settle inactive threads"]
       : []),
@@ -743,6 +746,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
+      sidebarGroupByProject: DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -2299,6 +2303,32 @@ export function GeneralSettingsPanel() {
                 updateSettings({ sidebarWorkingShelfEnabled: Boolean(checked) })
               }
               aria-label="Working section (beta)"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("group-by-project")}
+          description="Group active threads under a colored header for their project. Active threads can't be dragged while this is on."
+          resetAction={
+            settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject ? (
+              <SettingResetButton
+                label="group by project"
+                onClick={() =>
+                  updateSettings({
+                    sidebarGroupByProject: DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarGroupByProject}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarGroupByProject: Boolean(checked) })
+              }
+              aria-label="Group by project"
             />
           }
         />

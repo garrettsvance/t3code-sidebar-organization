@@ -180,6 +180,9 @@ import type { SidebarThreadSummary } from "../types";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
+import { deriveProjectIdentity } from "../projectIdentity";
+import { projectIconColorClassName } from "../projectIconColors";
+import type { ProjectIconColor } from "@t3tools/contracts";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
@@ -218,6 +221,7 @@ import {
   shouldNavigateAfterThreadPark,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
+  groupThreadsByProject,
   sidebarListItemId,
   sidebarMarkerId,
   sidebarThreadKeyAtY,
@@ -451,9 +455,16 @@ function useSidebarThreads(input: {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly routeThreadRef: ScopedThreadRef | null;
+  readonly projectGroupInfoByKey: ReadonlyMap<string, SidebarProjectGroupInfo>;
 }) {
-  const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
-    input;
+  const {
+    projectScopeKey,
+    scopedProjectKeys,
+    serverConfigs,
+    optimisticDrop,
+    routeThreadRef,
+    projectGroupInfoByKey,
+  } = input;
   const threads = useThreadShells();
   const routeRowThreadKey =
     routeThreadRef === null
@@ -469,6 +480,7 @@ function useSidebarThreads(input: {
           ),
         );
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
+  const groupByProject = useClientSettings((s) => s.sidebarGroupByProject);
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
   // minute would hold a woken thread on the shelf for up to a minute.
@@ -515,8 +527,22 @@ function useSidebarThreads(input: {
   const partitionNextWakeAt = partition.snoozedThreads[0]?.snoozedUntil ?? null;
   if (partitionNextWakeAt !== nextSnoozeWakeAt) setNextSnoozeWakeAt(partitionNextWakeAt);
 
-  const { pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads } =
-    partition;
+  const { pinnedThreads, workingThreads, snoozedThreads, settledThreads } = partition;
+  // Rows can't be dragged inside a grouped list: a drop would put a thread outside its group, and
+  // the list would snap it straight back.
+  const activeThreads = groupByProject
+    ? groupThreadsByProject(partition.activeThreads, (thread) =>
+        sidebarProjectGroupKey(projectGroupInfoByKey, thread),
+      )
+    : partition.activeThreads;
+  const activeReorderableThreadKeys = groupByProject
+    ? EMPTY_THREAD_KEYS
+    : partition.activeReorderableThreadKeys;
+  const draggableThreadKeys = (() => {
+    if (!groupByProject) return partition.draggableThreadKeys;
+    const activeKeySet = new Set(activeThreads.map(threadShellKey));
+    return new Set([...partition.draggableThreadKeys].filter((key) => !activeKeySet.has(key)));
+  })();
   const visibleSettledThreads = (() => {
     if (settledThreads.length <= settledVisibleCount) return settledThreads;
     const visible = settledThreads.slice(0, settledVisibleCount);
@@ -557,6 +583,10 @@ function useSidebarThreads(input: {
   return {
     routeRowThreadKey,
     ...partition,
+    activeThreads,
+    activeReorderableThreadKeys,
+    draggableThreadKeys,
+    groupByProject,
     threads,
     workingShelfEnabled,
     searchableThreads: [
@@ -596,6 +626,16 @@ function useSidebarThreads(input: {
       threads.map((thread) => [threadShellKey(thread), thread.activeOrderKey ?? null] as const),
     ),
   };
+}
+
+const EMPTY_THREAD_KEYS: ReadonlySet<string> = new Set();
+
+function sidebarProjectGroupKey(
+  infoByKey: ReadonlyMap<string, SidebarProjectGroupInfo>,
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "projectId">,
+): string {
+  const scopedKey = `${thread.environmentId}:${thread.projectId}`;
+  return infoByKey.get(scopedKey)?.groupKey ?? scopedKey;
 }
 
 function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
@@ -765,6 +805,12 @@ function isOptimisticDropReleased(input: {
 
 // Sidebar() is large enough that the compiler cannot prove its local maps stay
 // unmutated; built inside a hook they reach it frozen and cached.
+interface SidebarProjectGroupInfo {
+  readonly groupKey: string;
+  readonly displayName: string;
+  readonly color: ProjectIconColor;
+}
+
 function useSidebarLookups() {
   const projects = useProjects();
   const environments = useEnvironmentIdentities();
@@ -787,6 +833,21 @@ function useSidebarLookups() {
   const projectGroupByScopeKey = new Map(
     projectGroups.map((project) => [project.projectKey, project] as const),
   );
+  const projectGroupInfoByKey = new Map<string, SidebarProjectGroupInfo>(
+    projectGroups.flatMap((group) => {
+      const info: SidebarProjectGroupInfo = {
+        groupKey: group.projectKey,
+        displayName: group.displayName,
+        color:
+          group.projectIcon?.kind === "monogram"
+            ? group.projectIcon.color
+            : deriveProjectIdentity(group.displayName).color,
+      };
+      return group.memberProjects.map(
+        (project) => [`${project.environmentId}:${project.id}`, info] as const,
+      );
+    }),
+  );
   const projectScopeItems = [
     { value: "all", label: "All projects" },
     ...projectGroups.map((project) => ({ value: project.projectKey, label: project.displayName })),
@@ -800,6 +861,7 @@ function useSidebarLookups() {
     projectByKey,
     projectDisplayNameByKey,
     projectGroupByScopeKey,
+    projectGroupInfoByKey,
     projectScopeItems,
   };
 }
@@ -1306,6 +1368,32 @@ function SidebarSectionHeader(props: {
         {props.label}
       </CollapsibleSectionHeader>
     </SortableSidebarMarker>
+  );
+}
+
+function SidebarProjectGroupHeader(props: {
+  label: string;
+  count: number;
+  color: ProjectIconColor;
+  divided: boolean;
+}) {
+  const colorClass = projectIconColorClassName(props.color);
+  return (
+    <li
+      data-testid="sidebar-project-group-header"
+      className={cn(
+        "mx-0.5 list-none",
+        props.divided ? "mt-2 border-t border-sidebar-border pt-1.5" : "mt-1",
+      )}
+    >
+      <div className="flex h-6 items-center gap-1.5 px-2">
+        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full bg-current", colorClass)} />
+        <span className={cn("truncate text-2xs font-semibold tracking-wide uppercase", colorClass)}>
+          {props.label}
+        </span>
+        <span className="shrink-0 text-2xs text-sidebar-muted-foreground/70">{props.count}</span>
+      </div>
+    </li>
   );
 }
 
@@ -2719,6 +2807,7 @@ export default function Sidebar() {
     projectByKey,
     projectDisplayNameByKey,
     projectGroupByScopeKey,
+    projectGroupInfoByKey,
     projectScopeItems,
   } = useSidebarLookups();
   const router = useRouter();
@@ -3020,12 +3109,14 @@ export default function Sidebar() {
     pinnedKeysById,
     activeKeysById,
     routeRowThreadKey,
+    groupByProject,
   } = useSidebarThreads({
     projectScopeKey,
     scopedProjectKeys,
     serverConfigs,
     optimisticDrop,
     routeThreadRef,
+    projectGroupInfoByKey,
   });
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
@@ -4929,9 +5020,41 @@ export default function Sidebar() {
                           onDraftContextMenu={handleDraftContextMenu}
                         />,
                       ];
+                      const activeGroupCounts = new Map<string, number>();
+                      if (groupByProject) {
+                        for (const thread of activeThreads) {
+                          const groupKey = sidebarProjectGroupKey(projectGroupInfoByKey, thread);
+                          activeGroupCounts.set(
+                            groupKey,
+                            (activeGroupCounts.get(groupKey) ?? 0) + 1,
+                          );
+                        }
+                      }
+                      let currentGroupKey: string | null = null;
+                      let groupHeadersRendered = 0;
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
-                          items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          const thread = threadByKey.get(item.key)!;
+                          if (groupByProject && item.section === "active") {
+                            const groupKey = sidebarProjectGroupKey(projectGroupInfoByKey, thread);
+                            const info = projectGroupInfoByKey.get(
+                              `${thread.environmentId}:${thread.projectId}`,
+                            );
+                            if (info && groupKey !== currentGroupKey) {
+                              currentGroupKey = groupKey;
+                              items.push(
+                                <SidebarProjectGroupHeader
+                                  key={`project-group:${groupKey}`}
+                                  label={info.displayName}
+                                  count={activeGroupCounts.get(groupKey) ?? 0}
+                                  color={info.color}
+                                  divided={groupHeadersRendered > 0}
+                                />,
+                              );
+                              groupHeadersRendered += 1;
+                            }
+                          }
+                          items.push(renderThreadRow(thread, item.section));
                           continue;
                         }
                         switch (item.marker) {

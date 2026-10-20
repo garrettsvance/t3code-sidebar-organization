@@ -15,6 +15,7 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   filterSidebarV2VisibleThreads,
+  groupThreadsByProject,
   formatWorkingDurationLabel,
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
@@ -443,6 +444,18 @@ describe("sidebar thread lineage helpers", () => {
         new Set([`${environmentId}:${projectId}`]),
       ).map((thread) => thread.id),
     ).toEqual([parentId, fork.id]);
+  });
+
+  it("groups threads by project in order of each project's first thread", () => {
+    const threads = ["a1", "b1", "a2", "c1", "b2"];
+    expect(groupThreadsByProject(threads, (thread) => thread[0]!)).toEqual([
+      "a1",
+      "a2",
+      "b1",
+      "b2",
+      "c1",
+    ]);
+    expect(groupThreadsByProject([], () => "x")).toEqual([]);
   });
 
   it("identifies subagent threads so the sidebar can hide them", () => {
