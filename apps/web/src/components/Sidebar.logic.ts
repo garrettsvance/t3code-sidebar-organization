@@ -588,6 +588,30 @@ export function resolveProjectGroupOrder(
   return [...savedOrder, ...unplaced];
 }
 
+export function resolveProjectGroupDragTarget(
+  headers: readonly { key: string; top: number; height: number }[],
+  draggedKey: string,
+  y: number,
+): string | null {
+  const activeIndex = headers.findIndex((header) => header.key === draggedKey);
+  if (activeIndex === -1) return null;
+  let targetKey = draggedKey;
+  // Crossing a neighbor's midpoint leaves room to reverse direction without
+  // the animated spacing immediately swapping the same pair back.
+  for (let index = activeIndex - 1; index >= 0; index--) {
+    const header = headers[index]!;
+    if (y >= header.top + header.height / 2) break;
+    targetKey = header.key;
+  }
+  if (targetKey !== draggedKey) return targetKey;
+  for (let index = activeIndex + 1; index < headers.length; index++) {
+    const header = headers[index]!;
+    if (y <= header.top + header.height / 2) break;
+    targetKey = header.key;
+  }
+  return targetKey;
+}
+
 export function moveProjectGroup(
   order: readonly string[],
   draggedKey: string,

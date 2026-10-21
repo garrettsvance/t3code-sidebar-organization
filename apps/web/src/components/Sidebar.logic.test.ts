@@ -18,6 +18,7 @@ import {
   groupThreadsByProject,
   moveProjectGroup,
   resolveProjectGroupOrder,
+  resolveProjectGroupDragTarget,
   sortThreadsByStatusTier,
   formatWorkingDurationLabel,
   getFallbackThreadIdAfterDelete,
@@ -485,6 +486,38 @@ describe("sidebar thread lineage helpers", () => {
       "k-api",
       "k-web",
     ]);
+  });
+
+  it("waits for a neighbor's midpoint and keeps a downward move stable while spacing animates", () => {
+    const headers = [
+      { key: "a", top: 8, height: 48 },
+      { key: "b", top: 69, height: 56 },
+      { key: "c", top: 138, height: 56 },
+    ];
+    expect(resolveProjectGroupDragTarget(headers, "a", 70)).toBe("a");
+    expect(resolveProjectGroupDragTarget(headers, "a", 98)).toBe("b");
+
+    const swapped = [
+      { key: "b", top: 12, height: 56 },
+      { key: "a", top: 77, height: 48 },
+      headers[2]!,
+    ];
+    expect(resolveProjectGroupDragTarget(swapped, "a", 98)).toBe("a");
+    expect(resolveProjectGroupDragTarget(swapped, "a", 41)).toBe("a");
+    expect(resolveProjectGroupDragTarget(swapped, "a", 39)).toBe("b");
+    expect(resolveProjectGroupDragTarget(headers, "a", 39)).toBe("a");
+  });
+
+  it("can cross multiple groups in either direction without including hidden groups", () => {
+    const headers = [
+      { key: "a", top: 0, height: 48 },
+      { key: "b", top: 64, height: 48 },
+      { key: "c", top: 128, height: 48 },
+    ];
+    expect(resolveProjectGroupDragTarget(headers, "a", 200)).toBe("c");
+    expect(resolveProjectGroupDragTarget(headers, "c", -10)).toBe("a");
+    expect(resolveProjectGroupDragTarget(headers, "missing", 200)).toBeNull();
+    expect(resolveProjectGroupDragTarget([], "a", 200)).toBeNull();
   });
 
   it("moves a project group to its drop target and keeps hidden groups in place", () => {

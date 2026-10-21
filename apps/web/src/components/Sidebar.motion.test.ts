@@ -222,6 +222,41 @@ describe("sidebar list motion", () => {
     expect(a.animations[1]!.cancel).toHaveBeenCalledOnce();
   });
 
+  it("starts a reorder from the current layout after headers resize between commits", () => {
+    const a = new TestRow("first group", 24);
+    const b = new TestRow("second group", 24);
+    const { motion, layout } = fixture([a, b]);
+    motion.update(true);
+    a.offsetHeight = 48;
+    b.offsetHeight = 48;
+    layout([a, b]);
+    motion.captureLayout();
+    layout([b, a]);
+    motion.update(true);
+    expectMove(a, -49);
+    expectMove(b, 49);
+  });
+
+  it("preserves in-flight motion when refreshing a resized header's layout", () => {
+    const a = new TestRow("first group", 24);
+    const b = new TestRow("second group", 24);
+    const { motion, layout } = fixture([a, b]);
+    motion.update(true);
+    layout([b, a]);
+    motion.update(true);
+    a.animations[0]!.progress = 0.5;
+    b.animations[0]!.progress = 0.5;
+    a.offsetHeight = 48;
+    b.offsetHeight = 48;
+    layout([b, a]);
+    motion.captureLayout();
+    expect(a.animations[0]!.cancel).not.toHaveBeenCalled();
+    layout([a, b]);
+    motion.update(true);
+    expectMove(a, 36.5);
+    expectMove(b, -36.5);
+  });
+
   it("keeps an uninterrupted movement when the layout position does not change", () => {
     const a = new TestRow("a");
     const b = new TestRow("b");
@@ -504,6 +539,32 @@ describe("sidebar list motion", () => {
     layout(entering);
     motion.update(true);
     expect(entering.every((row) => row.animate.mock.calls.length === 0)).toBe(true);
+  });
+
+  it.each([3, 41])("animates group collapse and expansion with %i threads", (count) => {
+    const firstHeader = new TestRow("first group", 48);
+    const secondHeader = new TestRow("second group", 48);
+    const threads = Array.from({ length: count }, (_, index) => new TestRow(`thread-${index}`));
+    const { motion, layout, parent } = fixture([firstHeader, ...threads, secondHeader]);
+    motion.update(true);
+
+    layout([firstHeader, secondHeader]);
+    motion.update(true);
+    expectMove(secondHeader, count * 83);
+    expect(firstHeader.animate).not.toHaveBeenCalled();
+    expect(threads.every((thread) => thread.clones.length === (count <= 40 ? 1 : 0))).toBe(true);
+
+    for (const row of parent.children) {
+      for (const animation of row.animations) animation.finish();
+    }
+    expect(parent.children).toEqual([firstHeader, secondHeader]);
+
+    layout([firstHeader, ...threads, secondHeader]);
+    motion.update(true);
+    expectMove(secondHeader, -count * 83);
+    expect(threads.every((thread) => thread.animations.length === (count <= 40 ? 1 : 0))).toBe(
+      true,
+    );
   });
 
   it("still slides rows when one removal displaces a large list", () => {

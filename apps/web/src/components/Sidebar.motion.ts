@@ -120,22 +120,30 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
     );
   };
 
+  const measureLayout = () =>
+    new Map<HTMLElement, RowPosition>(
+      Array.from(parent.children)
+        .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
+        .map((node) => [
+          node,
+          {
+            top: node.offsetTop,
+            left: node.offsetLeft,
+            width: node.offsetWidth,
+            height: node.offsetHeight,
+          },
+        ]),
+    );
+
   return {
+    // CSS header resizing can change offsets between React commits. Refresh
+    // the baseline without interrupting the transforms already in flight.
+    captureLayout() {
+      if (!disposed) positions = measureLayout();
+    },
     update(animate: boolean) {
       if (disposed) return;
-      const next = new Map(
-        Array.from(parent.children)
-          .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
-          .map((node) => [
-            node,
-            {
-              top: node.offsetTop,
-              left: node.offsetLeft,
-              width: node.offsetWidth,
-              height: node.offsetHeight,
-            },
-          ]),
-      );
+      const next = measureLayout();
       let fadeCount = 0;
       if (positions !== null) {
         for (const [node, position] of positions) {
@@ -145,11 +153,9 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
           if (!positions.has(node) && position.height > 0) fadeCount++;
         }
       }
-      const shouldAnimate =
-        animate &&
-        positions !== null &&
-        !reducedMotion?.matches &&
-        fadeCount <= MAX_FADED_ROWS_PER_UPDATE;
+      const shouldAnimate = animate && positions !== null && !reducedMotion?.matches;
+      // Large group collapses still slide the retained headers without cloning every thread row.
+      const shouldFade = shouldAnimate && fadeCount <= MAX_FADED_ROWS_PER_UPDATE;
       const movedDelta = new Map<HTMLElement, number>();
       const nextOrder = [...next.keys()];
       const oldOrder = positions === null ? [] : [...positions.keys()];
@@ -166,15 +172,15 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
         }
         return undefined;
       };
-      if (!shouldAnimate) clearFades();
-      else {
+      if (!shouldFade) clearFades();
+      if (shouldAnimate) {
         for (const [node, position] of next) {
           const previousTop = positions!.get(node)?.top;
           if (previousTop === undefined || previousTop === position.top) continue;
           movedDelta.set(node, previousTop + remainingOffset(node) - position.top);
         }
         for (const [node, position] of positions!) {
-          if (next.has(node)) continue;
+          if (!shouldFade || next.has(node)) continue;
           const delta = ridingDelta(oldOrder, oldOrder.indexOf(node), (n) => next.has(n));
           fadeOut(node, position, delta === undefined ? rowTravel(position.height) : -delta);
         }
@@ -193,7 +199,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
           const position = next.get(node)!;
           const previousTop = positions!.get(node)?.top;
           if (previousTop === undefined) {
-            if (position.height > 0) {
+            if (shouldFade && position.height > 0) {
               const delta = ridingDelta(nextOrder, index, (n) => positions!.has(n));
               const travel = delta === undefined ? -rowTravel(position.height) : delta;
               const animation = node.animate(
