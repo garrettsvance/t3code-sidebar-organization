@@ -153,6 +153,27 @@ describe("buildThreadActionMenuItems", () => {
     expect(ids(baseState)).toEqual(expect.arrayContaining(["pin", "settle", "snooze"]));
   });
 
+  it("offers switching between group and top pins, with a way to unpin either", () => {
+    const unpinned = { ...baseState, groupPinningEnabled: true };
+    expect(ids(unpinned)).toEqual(expect.arrayContaining(["pin", "pin-group"]));
+    const top = { ...unpinned, isPinned: true };
+    expect(ids(top)).toEqual(expect.arrayContaining(["unpin", "pin-group"]));
+    expect(ids(top)).not.toContain("pin");
+    const group = { ...top, isGroupPinned: true };
+    expect(ids(group)).toEqual(expect.arrayContaining(["unpin", "pin"]));
+    expect(ids(group)).not.toContain("pin-group");
+    expect(buildThreadActionMenuItems(group).find((item) => item.id === "unpin")?.label).toBe(
+      "Unpin from group",
+    );
+    expect(ids({ ...unpinned, canOperate: false }).includes("pin-group")).toBe(true);
+    expect(
+      buildThreadActionMenuItems({ ...unpinned, canOperate: false }).find(
+        (item) => item.id === "pin-group",
+      )?.disabled,
+    ).toBe(true);
+    expect(ids({ ...group, groupPinningEnabled: false })).not.toContain("pin-group");
+  });
+
   it("offers auto-settle as a submenu with the current option checked", () => {
     const find = (state: ThreadActionMenuState) =>
       buildThreadActionMenuItems(state).find((item) => item.id === "auto-settle");

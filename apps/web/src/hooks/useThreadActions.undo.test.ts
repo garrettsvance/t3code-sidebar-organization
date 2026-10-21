@@ -1,3 +1,6 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/reactivity";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -32,7 +35,14 @@ vi.mock("react", async (original) => ({
   useRef: (value: unknown) => ({ current: value }),
 }));
 vi.mock("@tanstack/react-router", () => ({ useRouter: () => router }));
-vi.mock("./useSettings", () => ({ useClientSettings: () => false }));
+const pinSettings = vi.hoisted(() => ({ sidebarGroupPinnedThreadKeys: [] as string[] }));
+vi.mock("./useSettings", () => ({
+  useClientSettings: () => false,
+  getClientSettings: () => pinSettings,
+  updateClientSettings: async (patch: { sidebarGroupPinnedThreadKeys: string[] }) => {
+    pinSettings.sidebarGroupPinnedThreadKeys = patch.sidebarGroupPinnedThreadKeys;
+  },
+}));
 vi.mock("./useHandleNewThread", () => ({ useNewThreadHandler: () => vi.fn() }));
 vi.mock("../composerDraftStore", () => ({ useComposerDraftStore: () => vi.fn() }));
 vi.mock("../terminalUiStateStore", () => ({ useTerminalUiStateStore: () => vi.fn() }));
@@ -90,6 +100,14 @@ function currentUndo() {
   return notice!.undo;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   for (const command of Object.values(commands)) {
@@ -97,6 +115,7 @@ beforeEach(() => {
   }
   router.navigate.mockClear();
   router.state.matches[0]!.params = {};
+  pinSettings.sidebarGroupPinnedThreadKeys = [];
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
 });
@@ -217,6 +236,75 @@ describe("settle and snooze Undo", () => {
     expect(commands.unsnooze).toHaveBeenCalledExactlyOnceWith({
       environmentId: target.environmentId,
       input: { threadId: target.threadId, reason: "user" },
+    });
+  });
+});
+
+describe("pin destinations", () => {
+  it.each(["group", "top"] as const)(
+    "uses the %s destination while the server pin is still pending",
+    async (destination) => {
+      const key = scopedThreadKey(target);
+      pinSettings.sidebarGroupPinnedThreadKeys =
+        destination === "top" ? [key, "other-environment:thread"] : ["other-environment:thread"];
+      const started = deferred<void>();
+      const pending = deferred<ReturnType<typeof AsyncResult.success<void>>>();
+      commands.pin.mockImplementationOnce(() => {
+        started.resolve();
+        return pending.promise;
+      });
+
+      const result = useThreadActions().pinThread(target, { destination, orderKey: "a0" });
+      await started.promise;
+      expect(pinSettings.sidebarGroupPinnedThreadKeys).toEqual(
+        destination === "group" ? [key, "other-environment:thread"] : ["other-environment:thread"],
+      );
+      pending.resolve(AsyncResult.success(undefined));
+      await result;
+    },
+  );
+
+  it("moves a pin between group and top without disturbing other environments", async () => {
+    const actions = useThreadActions();
+    pinSettings.sidebarGroupPinnedThreadKeys = ["other-environment:thread"];
+    await actions.pinThread(target, { destination: "group", orderKey: "a0" });
+    expect(pinSettings.sidebarGroupPinnedThreadKeys).toEqual([
+      scopedThreadKey(target),
+      "other-environment:thread",
+    ]);
+    await actions.pinThread(target, { destination: "top", orderKey: "a0" });
+    expect(pinSettings.sidebarGroupPinnedThreadKeys).toEqual(["other-environment:thread"]);
+  });
+
+  it("leaves the destination unchanged when the server rejects the pin", async () => {
+    pinSettings.sidebarGroupPinnedThreadKeys = [scopedThreadKey(target)];
+    commands.pin.mockResolvedValueOnce(AsyncResult.failure(Cause.fail(new Error("Denied"))));
+    const result = await useThreadActions().pinThread(target, {
+      destination: "top",
+      orderKey: "a0",
+    });
+    expect(result._tag).toBe("Failure");
+    expect(pinSettings.sidebarGroupPinnedThreadKeys).toEqual([scopedThreadKey(target)]);
+  });
+
+  it("rolls back a rejected group pin without removing another thread's new group pin", async () => {
+    commands.pin.mockImplementationOnce(async () => {
+      pinSettings.sidebarGroupPinnedThreadKeys.push("other-environment:thread");
+      return AsyncResult.failure(Cause.fail(new Error("Denied")));
+    });
+    await useThreadActions().pinThread(target, { destination: "group", orderKey: "a0" });
+    expect(pinSettings.sidebarGroupPinnedThreadKeys).toEqual(["other-environment:thread"]);
+  });
+
+  it("restores a group pin's destination when undoing an unpin", async () => {
+    const actions = useThreadActions();
+    pinSettings.sidebarGroupPinnedThreadKeys = [scopedThreadKey(target)];
+    await actions.unpinThread(target);
+    await currentUndo()();
+    expect(pinSettings.sidebarGroupPinnedThreadKeys).toEqual([scopedThreadKey(target)]);
+    expect(commands.pin).toHaveBeenCalledWith({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, orderKey: "a0" },
     });
   });
 });

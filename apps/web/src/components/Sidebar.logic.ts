@@ -606,8 +606,14 @@ export function moveProjectGroup(
 // background process last. Sorting is stable, so each tier keeps the incoming recency order.
 export function sortThreadsByStatusTier<T extends SidebarThreadStatusInput>(
   threads: readonly T[],
+  options: {
+    readonly isGroupPinned?: (thread: T) => boolean;
+    readonly sortByStatus?: boolean;
+  } = {},
 ): T[] {
   const tierOf = (thread: T) => {
+    if (options.isGroupPinned?.(thread)) return -1;
+    if (options.sortByStatus === false) return 0;
     const status = resolveSidebarThreadStatus(thread);
     if (status === "approval" || status === "input") return 0;
     return status === "working" || status === "waiting" ? 2 : 1;

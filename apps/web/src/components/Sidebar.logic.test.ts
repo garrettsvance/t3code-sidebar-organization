@@ -518,6 +518,39 @@ describe("sidebar thread lineage helpers", () => {
     ).toEqual(["input", "approval", "done-new", "done-old", "working-new", "working-old"]);
   });
 
+  it.each([true, false])(
+    "keeps group pins above status priority (status sorting: %s)",
+    (sortByStatus) => {
+      const threads = [
+        makeThreadFixture({ id: ThreadId.make("input"), hasPendingUserInput: true }),
+        makeThreadFixture({
+          id: ThreadId.make("pinned-working"),
+          runtime: {
+            status: "running",
+            activeRunId: null,
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            providerName: null,
+            lastError: null,
+            updatedAt: "2026-10-21T00:00:00Z",
+          },
+        }),
+        makeThreadFixture({ id: ThreadId.make("regular") }),
+        makeThreadFixture({ id: ThreadId.make("pinned-idle") }),
+      ];
+      const arranged = sortThreadsByStatusTier(threads, {
+        isGroupPinned: (thread) => thread.id.startsWith("pinned-"),
+        sortByStatus,
+      });
+      expect(arranged.map((thread) => thread.id)).toEqual([
+        "pinned-working",
+        "pinned-idle",
+        "input",
+        "regular",
+      ]);
+      expect(threads[0]?.id).toBe("input");
+    },
+  );
+
   it("identifies subagent threads so the sidebar can hide them", () => {
     const parentId = ThreadId.make("thread-parent");
     const subagent = makeThreadFixture({

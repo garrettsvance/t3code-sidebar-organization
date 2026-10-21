@@ -1,4 +1,4 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
@@ -44,7 +44,7 @@ import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
-import { useClientSettings } from "./useSettings";
+import { getClientSettings, useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
 
 function failureToast(title: string, error: unknown) {
@@ -133,6 +133,11 @@ export function useThreadActionMenu(input: {
         branch: thread.branch ?? null,
         projectFilter: null,
         isPinned: thread.pinnedAt != null,
+        isGroupPinned:
+          thread.pinnedAt != null &&
+          getClientSettings().sidebarGroupPinnedThreadKeys.includes(scopedThreadKey(threadRef)),
+        groupPinningEnabled:
+          getClientSettings().sidebarGroupByProject && !getClientSettings().legacySidebarEnabled,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
@@ -216,7 +221,14 @@ export function useThreadActionMenu(input: {
           await reportFailure("Failed to wake thread", () => unsnoozeThread(threadRef));
           return;
         case "pin":
-          await reportFailure("Failed to pin thread", () => pinThread(threadRef));
+          await reportFailure("Failed to pin thread", () =>
+            pinThread(threadRef, { destination: "top" }),
+          );
+          return;
+        case "pin-group":
+          await reportFailure("Failed to pin thread to group", () =>
+            pinThread(threadRef, { destination: "group" }),
+          );
           return;
         case "unpin": {
           await reportFailure("Failed to unpin thread", () => confirmAndUnpinThread(threadRef));
