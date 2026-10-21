@@ -580,6 +580,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarSortByStatus !== DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus
       ? ["Sort by status"]
       : []),
+    ...(settings.sidebarProjectAttentionIndicator !==
+    DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator
+      ? ["Project attention indicator"]
+      : []),
     ...(settings.sidebarProjectGroupOrder.length > 0 ? ["Project group order"] : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? ["Auto-settle inactive threads"]
@@ -752,6 +756,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
       sidebarGroupByProject: DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject,
       sidebarSortByStatus: DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus,
+      sidebarProjectAttentionIndicator: DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator,
       sidebarProjectGroupOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupOrder,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
@@ -2335,6 +2340,34 @@ export function GeneralSettingsPanel() {
                 updateSettings({ sidebarGroupByProject: Boolean(checked) })
               }
               aria-label="Group by project"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("project-attention-indicator")}
+          description="Show an exclamation mark on a project header when an active thread needs input or approval. Requires Group by project."
+          resetAction={
+            settings.sidebarProjectAttentionIndicator !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator ? (
+              <SettingResetButton
+                label="project attention indicator"
+                onClick={() =>
+                  updateSettings({
+                    sidebarProjectAttentionIndicator:
+                      DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarProjectAttentionIndicator}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarProjectAttentionIndicator: Boolean(checked) })
+              }
+              aria-label="Project attention indicator"
             />
           }
         />

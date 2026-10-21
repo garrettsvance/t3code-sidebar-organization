@@ -335,6 +335,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sidebar active threads sections headers color divider"],
   },
   {
+    id: "project-attention-indicator",
+    title: "Project attention indicator",
+    to: "/settings/general",
+    searchTerms: ["sidebar header group input approval waiting exclamation alert needs attention"],
+  },
+  {
     id: "sort-by-status",
     title: "Sort by status",
     to: "/settings/general",
