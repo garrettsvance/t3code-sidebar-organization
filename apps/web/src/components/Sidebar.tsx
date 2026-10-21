@@ -78,6 +78,7 @@ import {
   ClockIcon,
   FolderIcon,
   GitBranchIcon,
+  GripVerticalIcon,
   ListFilterIcon,
   MessageCircleQuestionIcon,
   PinIcon,
@@ -97,7 +98,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -226,6 +226,7 @@ import {
   groupThreadsByProject,
   moveProjectGroup,
   resolveProjectGroupOrder,
+  resolveProjectGroupDragTarget,
   sortThreadsByStatusTier,
   sidebarListItemId,
   sidebarMarkerId,
@@ -1419,7 +1420,7 @@ function SidebarSectionHeader(props: {
   );
 }
 
-// Native drag-and-drop keeps group moves out of the thread rows' pointer sensors.
+// Window pointer listeners keep the gesture alive when the preview moves the source header.
 function SidebarProjectGroupHeader(props: {
   groupKey: string;
   label: string;
@@ -1428,35 +1429,62 @@ function SidebarProjectGroupHeader(props: {
   color: ProjectIconColor;
   divided: boolean;
   dragging: boolean;
-  onDragStart: (groupKey: string) => void;
-  onDragEnd: () => void;
+  reordering: boolean;
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>, groupKey: string) => void;
 }) {
   const colorClass = projectIconColorClassName(props.color);
   return (
     <li
       data-testid="sidebar-project-group-header"
       data-project-group-key={props.groupKey}
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", props.label);
-        props.onDragStart(props.groupKey);
-      }}
-      onDragEnd={props.onDragEnd}
+      onPointerDown={(event) => props.onPointerDown(event, props.groupKey)}
       className={cn(
-        "mx-0.5 cursor-grab list-none",
-        props.divided ? "mt-2 border-t border-sidebar-border pt-1.5" : "mt-1",
+        "group/project-group mx-0.5 touch-none cursor-grab active:cursor-grabbing list-none select-none transition-[margin,padding] duration-200 ease-drawer motion-reduce:transition-none",
+        props.divided && "border-t border-sidebar-border",
+        props.reordering
+          ? props.divided
+            ? "mt-3 pt-2"
+            : "mt-2"
+          : props.divided
+            ? "mt-2 pt-1.5"
+            : "mt-1",
         props.dragging && "opacity-50",
       )}
     >
       <div
-        className={cn("flex h-6 items-center gap-1.5 rounded-sm bg-current/10 px-2", colorClass)}
+        className={cn(
+          "flex items-center rounded-sm bg-current/10 transition-[height,gap,padding,scale] duration-200 ease-drawer motion-reduce:transition-none",
+          props.reordering
+            ? "h-12 gap-3 px-3"
+            : "h-6 gap-1.5 px-2 group-hover/project-group:scale-102",
+          colorClass,
+        )}
       >
-        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full bg-current", colorClass)} />
-        <span className={cn("truncate text-2xs font-semibold tracking-wide uppercase", colorClass)}>
+        <span
+          aria-hidden
+          className={cn(
+            "shrink-0 rounded-full bg-current transition-[width,height] duration-200 ease-drawer motion-reduce:transition-none",
+            props.reordering ? "size-3" : "size-1.5",
+            colorClass,
+          )}
+        />
+        <span
+          className={cn(
+            "truncate font-semibold tracking-wide uppercase transition-[font-size,line-height] duration-200 ease-drawer motion-reduce:transition-none",
+            props.reordering ? "text-2xl" : "text-2xs",
+            colorClass,
+          )}
+        >
           {props.label}
         </span>
-        <span className="shrink-0 text-2xs text-sidebar-muted-foreground/70">{props.count}</span>
+        <span
+          className={cn(
+            "shrink-0 text-sidebar-muted-foreground/70 transition-[font-size,line-height] duration-200 ease-drawer motion-reduce:transition-none",
+            props.reordering ? "text-2xl" : "text-2xs",
+          )}
+        >
+          {props.count}
+        </span>
         {props.needsAttention ? (
           <Tooltip>
             <TooltipTrigger
@@ -1464,31 +1492,48 @@ function SidebarProjectGroupHeader(props: {
                 <span
                   role="img"
                   aria-label="Threads need input or approval"
-                  className="ml-auto shrink-0 text-warning"
+                  className="shrink-0 text-warning"
                 >
-                  <CircleAlertIcon aria-hidden="true" className="size-3" />
+                  <CircleAlertIcon
+                    aria-hidden="true"
+                    className={cn(
+                      "transition-[width,height] duration-200 ease-drawer motion-reduce:transition-none",
+                      props.reordering ? "size-6" : "size-3",
+                    )}
+                  />
                 </span>
               }
             />
             <TooltipPopup>Threads need input or approval</TooltipPopup>
           </Tooltip>
         ) : null}
+        <GripVerticalIcon
+          aria-hidden="true"
+          className={cn(
+            "ml-auto shrink-0 text-sidebar-muted-foreground transition-[width,height,opacity] duration-200 ease-drawer motion-reduce:transition-none",
+            props.reordering
+              ? "size-5 opacity-100"
+              : "size-3.5 opacity-40 group-hover/project-group:opacity-100",
+          )}
+        />
       </div>
     </li>
   );
 }
 
-function projectGroupKeyAtY(list: HTMLElement, clientY: number): string | null {
-  let match: string | null = null;
+function projectGroupKeyAtY(list: HTMLElement, clientY: number, draggedKey: string): string | null {
   const rect = list.getBoundingClientRect();
   const scale = list.offsetWidth > 0 ? rect.width / list.offsetWidth : 1;
   const y = (clientY - rect.top) / scale;
-  for (const header of list.querySelectorAll<HTMLElement>("[data-project-group-key]")) {
-    // Layout positions ignore the temporary transforms used to animate the preview.
-    if (match !== null && header.offsetTop > y) break;
-    match = header.dataset.projectGroupKey ?? null;
-  }
-  return match;
+  // Layout positions exclude the preview's temporary translation transforms.
+  const headers = Array.from(list.querySelectorAll<HTMLElement>("[data-project-group-key]")).map(
+    (header) => ({
+      key: header.dataset.projectGroupKey!,
+      top: header.offsetTop,
+      height: header.offsetHeight,
+    }),
+  );
+  return resolveProjectGroupDragTarget(headers, draggedKey, y);
 }
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
@@ -3738,29 +3783,97 @@ export default function Sidebar() {
   const [projectGroupPreviewOrder, setProjectGroupPreviewOrder] = useState<
     readonly string[] | null
   >(null);
-  const endProjectGroupDrag = () => {
+  const projectGroupGestureRef = useRef<{
+    key: string;
+    pointerId: number;
+    startY: number;
+    order: readonly string[] | null;
+  } | null>(null);
+  const endProjectGroupDrag = useStableCallback((commit: boolean) => {
+    const gesture = projectGroupGestureRef.current;
+    projectGroupGestureRef.current = null;
+    if (gesture?.order != null) listMotionRef.current?.captureLayout();
     setDraggedProjectGroupKey(null);
     setProjectGroupPreviewOrder(null);
-  };
-  const handleProjectGroupDragOver = (event: ReactDragEvent<HTMLElement>) => {
-    if (draggedProjectGroupKey === null) return;
+    if (commit && gesture?.order != null) {
+      void updateClientSettings({ sidebarProjectGroupOrder: gesture.order });
+    }
+  });
+  const handleProjectGroupPointerDown = (event: ReactPointerEvent<HTMLElement>, key: string) => {
+    if (event.button !== 0 || !event.isPrimary) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const targetKey = projectGroupKeyAtY(event.currentTarget, event.clientY);
+    event.stopPropagation();
+    projectGroupGestureRef.current = {
+      key,
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      order: null,
+    };
+  };
+  const moveProjectGroupDrag = useStableCallback((event: PointerEvent) => {
+    const gesture = projectGroupGestureRef.current;
+    const list = threadListRef.current;
+    if (gesture === null || gesture.pointerId !== event.pointerId || list === null) return;
+    if (event.buttons === 0) {
+      endProjectGroupDrag(false);
+      return;
+    }
+    if (gesture.order === null) {
+      if (Math.abs(event.clientY - gesture.startY) < 6) return;
+      listMotionRef.current?.captureLayout();
+      gesture.order = projectGroupOrder;
+      setDraggedProjectGroupKey(gesture.key);
+      setProjectGroupPreviewOrder(gesture.order);
+      // Hit testing must wait for the collapsed headers' layout.
+      return;
+    }
+    const targetKey = projectGroupKeyAtY(list, event.clientY, gesture.key);
     if (targetKey === null) return;
-    setProjectGroupPreviewOrder(
-      (current) =>
-        moveProjectGroup(current ?? projectGroupOrder, draggedProjectGroupKey, targetKey) ??
-        current,
-    );
-  };
-  const handleProjectGroupDrop = (event: ReactDragEvent<HTMLElement>) => {
-    if (draggedProjectGroupKey === null) return;
-    event.preventDefault();
-    const nextOrder = projectGroupPreviewOrder;
-    endProjectGroupDrag();
-    if (nextOrder !== null) void updateClientSettings({ sidebarProjectGroupOrder: nextOrder });
-  };
+    const nextOrder = moveProjectGroup(gesture.order, gesture.key, targetKey);
+    if (nextOrder !== null) {
+      listMotionRef.current?.captureLayout();
+      gesture.order = nextOrder;
+      setProjectGroupPreviewOrder(nextOrder);
+    }
+  });
+  useEffect(() => {
+    const cancel = () => endProjectGroupDrag(false);
+    const release = (event: PointerEvent) => {
+      if (projectGroupGestureRef.current?.pointerId !== event.pointerId) return;
+      const rect = threadListRef.current?.getBoundingClientRect();
+      endProjectGroupDrag(
+        rect !== undefined &&
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom,
+      );
+    };
+    const cancelPointer = (event: PointerEvent) => {
+      if (projectGroupGestureRef.current?.pointerId === event.pointerId) cancel();
+    };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancel();
+    };
+    const visibility = () => {
+      if (document.hidden) cancel();
+    };
+    window.addEventListener("pointermove", moveProjectGroupDrag);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", cancelPointer);
+    window.addEventListener("keydown", keydown);
+    window.addEventListener("blur", cancel);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      projectGroupGestureRef.current = null;
+      window.removeEventListener("pointermove", moveProjectGroupDrag);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", cancelPointer);
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("blur", cancel);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [endProjectGroupDrag, moveProjectGroupDrag]);
   const sidebarListItemsFresh = ((): readonly SidebarListItem[] => {
     const rowsOf = (
       list: readonly EnvironmentThreadShell[],
@@ -3839,6 +3952,7 @@ export default function Sidebar() {
   // from forcing a layout read and animating rows that drifted for other reasons.
   const listMotionLayoutKey = [
     sidebarListItemsKey,
+    draggedProjectGroupKey ?? "",
     visibleDraftSessionCount,
     routeDraftIdForRows ?? "",
   ].join("\0");
@@ -5033,8 +5147,6 @@ export default function Sidebar() {
                     // presentational list also makes its implicit listitems
                     // presentational while preserving every descendant control.
                     role="presentation"
-                    onDragOver={handleProjectGroupDragOver}
-                    onDrop={handleProjectGroupDrop}
                     className={cn(
                       "relative flex flex-col gap-px",
                       sidebarListItems.length > 0 && "flex-1",
@@ -5198,12 +5310,8 @@ export default function Sidebar() {
                                   key={`project-group:${groupKey}`}
                                   groupKey={groupKey}
                                   dragging={draggedProjectGroupKey === groupKey}
-                                  onDragStart={(key) => {
-                                    listMotionRef.current?.suspend();
-                                    setDraggedProjectGroupKey(key);
-                                    setProjectGroupPreviewOrder(projectGroupOrder);
-                                  }}
-                                  onDragEnd={endProjectGroupDrag}
+                                  reordering={draggedProjectGroupKey !== null}
+                                  onPointerDown={handleProjectGroupPointerDown}
                                   label={info.displayName}
                                   count={activeGroupCounts.get(groupKey) ?? 0}
                                   needsAttention={attentionGroupKeys.has(groupKey)}
