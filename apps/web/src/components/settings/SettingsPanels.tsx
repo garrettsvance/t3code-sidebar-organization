@@ -577,6 +577,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject
       ? ["Group by project"]
       : []),
+    ...(settings.sidebarSortByStatus !== DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus
+      ? ["Sort by status"]
+      : []),
+    ...(settings.sidebarProjectGroupOrder.length > 0 ? ["Project group order"] : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? ["Auto-settle inactive threads"]
       : []),
@@ -747,6 +751,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
       sidebarGroupByProject: DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject,
+      sidebarSortByStatus: DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus,
+      sidebarProjectGroupOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupOrder,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -2309,7 +2315,7 @@ export function GeneralSettingsPanel() {
 
         <SettingsRow
           {...searchableSetting("group-by-project")}
-          description="Group active threads under a colored header for their project. Active threads can't be dragged while this is on."
+          description="Group active threads under a colored header for their project. Drag a header to move its group. Active threads can't be dragged while this is on."
           resetAction={
             settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject ? (
               <SettingResetButton
@@ -2329,6 +2335,32 @@ export function GeneralSettingsPanel() {
                 updateSettings({ sidebarGroupByProject: Boolean(checked) })
               }
               aria-label="Group by project"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("sort-by-status")}
+          description="In the Active section, list threads that need your input first, then finished threads, then threads that are still working. Active threads can't be dragged while this is on."
+          resetAction={
+            settings.sidebarSortByStatus !== DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus ? (
+              <SettingResetButton
+                label="sort by status"
+                onClick={() =>
+                  updateSettings({
+                    sidebarSortByStatus: DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarSortByStatus}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarSortByStatus: Boolean(checked) })
+              }
+              aria-label="Sort by status"
             />
           }
         />

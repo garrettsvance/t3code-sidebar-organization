@@ -552,11 +552,12 @@ export function filterSidebarV2VisibleThreads<
   );
 }
 
-// Groups sit in the order of their first thread and threads keep their order within a group, so
-// the list only moves when a project's top thread changes.
+// Groups follow `groupOrder`; a group missing from it goes after the ordered ones, in the order of
+// its first thread. Threads keep their order within a group.
 export function groupThreadsByProject<T>(
   threads: readonly T[],
   groupKeyOf: (thread: T) => string,
+  groupOrder: readonly string[] = [],
 ): T[] {
   const groups = new Map<string, T[]>();
   for (const thread of threads) {
@@ -565,7 +566,53 @@ export function groupThreadsByProject<T>(
     if (group) group.push(thread);
     else groups.set(key, [thread]);
   }
-  return [...groups.values()].flat();
+  const ordered = groupOrder.flatMap((key) => groups.get(key) ?? []);
+  const orderedKeys = new Set(groupOrder);
+  const rest = [...groups].filter(([key]) => !orderedKeys.has(key)).flatMap(([, group]) => group);
+  return [...ordered, ...rest];
+}
+
+// Saved order first, then groups the user has not placed yet by name. Never derived from thread
+// activity, so groups stay where the user put them while their threads change status.
+export function resolveProjectGroupOrder(
+  savedOrder: readonly string[],
+  presentGroups: readonly { readonly key: string; readonly label: string }[],
+): string[] {
+  const saved = new Set(savedOrder);
+  const unplaced = presentGroups
+    .filter((group) => !saved.has(group.key))
+    .toSorted(
+      (left, right) => left.label.localeCompare(right.label) || (left.key < right.key ? -1 : 1),
+    )
+    .map((group) => group.key);
+  return [...savedOrder, ...unplaced];
+}
+
+export function moveProjectGroup(
+  order: readonly string[],
+  draggedKey: string,
+  targetKey: string,
+): string[] | null {
+  const from = order.indexOf(draggedKey);
+  const to = order.indexOf(targetKey);
+  if (from === -1 || to === -1 || from === to) return null;
+  const next = [...order];
+  next.splice(from, 1);
+  next.splice(to, 0, draggedKey);
+  return next;
+}
+
+// Needs-you threads first, then everything else, with threads that are working or waiting on a
+// background process last. Sorting is stable, so each tier keeps the incoming recency order.
+export function sortThreadsByStatusTier<T extends SidebarThreadStatusInput>(
+  threads: readonly T[],
+): T[] {
+  const tierOf = (thread: T) => {
+    const status = resolveSidebarThreadStatus(thread);
+    if (status === "approval" || status === "input") return 0;
+    return status === "working" || status === "waiting" ? 2 : 1;
+  };
+  return threads.toSorted((left, right) => tierOf(left) - tierOf(right));
 }
 
 export function getSidebarForkParentThreadId(

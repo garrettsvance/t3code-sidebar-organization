@@ -97,6 +97,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -147,7 +148,8 @@ import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useClientSettings } from "../hooks/useSettings";
+import { updateClientSettings, useClientSettings } from "../hooks/useSettings";
+import { sortThreads } from "../lib/threadSort";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -222,6 +224,9 @@ import {
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
   groupThreadsByProject,
+  moveProjectGroup,
+  resolveProjectGroupOrder,
+  sortThreadsByStatusTier,
   sidebarListItemId,
   sidebarMarkerId,
   sidebarThreadKeyAtY,
@@ -481,6 +486,8 @@ function useSidebarThreads(input: {
         );
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const groupByProject = useClientSettings((s) => s.sidebarGroupByProject);
+  const sortByStatus = useClientSettings((s) => s.sidebarSortByStatus);
+  const savedProjectGroupOrder = useClientSettings((s) => s.sidebarProjectGroupOrder);
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
   // minute would hold a woken thread on the shelf for up to a minute.
@@ -528,18 +535,41 @@ function useSidebarThreads(input: {
   if (partitionNextWakeAt !== nextSnoozeWakeAt) setNextSnoozeWakeAt(partitionNextWakeAt);
 
   const { pinnedThreads, workingThreads, snoozedThreads, settledThreads } = partition;
-  // Rows can't be dragged inside a grouped list: a drop would put a thread outside its group, and
-  // the list would snap it straight back.
-  const activeThreads = groupByProject
-    ? groupThreadsByProject(partition.activeThreads, (thread) =>
-        sidebarProjectGroupKey(projectGroupInfoByKey, thread),
-      )
-    : partition.activeThreads;
-  const activeReorderableThreadKeys = groupByProject
+  // Rows can't be dragged while the list is regrouped or re-sorted: a drop would be undone by the
+  // next sort.
+  const lockActiveOrder = groupByProject || sortByStatus;
+  const { activeThreads, projectGroupOrder } = (() => {
+    const recent = sortByStatus
+      ? sortThreadsByStatusTier(sortThreads(partition.activeThreads, "updated_at"))
+      : partition.activeThreads;
+    if (!groupByProject) return { activeThreads: recent, projectGroupOrder: [] };
+    const groupKeyOf = (thread: EnvironmentThreadShell) =>
+      sidebarProjectGroupKey(projectGroupInfoByKey, thread);
+    const present = new Map(
+      recent.map((thread) => {
+        const key = groupKeyOf(thread);
+        return [
+          key,
+          {
+            key,
+            label:
+              projectGroupInfoByKey.get(`${thread.environmentId}:${thread.projectId}`)
+                ?.displayName ?? key,
+          },
+        ] as const;
+      }),
+    );
+    const groupOrder = resolveProjectGroupOrder(savedProjectGroupOrder, [...present.values()]);
+    return {
+      activeThreads: groupThreadsByProject(recent, groupKeyOf, groupOrder),
+      projectGroupOrder: groupOrder,
+    };
+  })();
+  const activeReorderableThreadKeys = lockActiveOrder
     ? EMPTY_THREAD_KEYS
     : partition.activeReorderableThreadKeys;
   const draggableThreadKeys = (() => {
-    if (!groupByProject) return partition.draggableThreadKeys;
+    if (!lockActiveOrder) return partition.draggableThreadKeys;
     const activeKeySet = new Set(activeThreads.map(threadShellKey));
     return new Set([...partition.draggableThreadKeys].filter((key) => !activeKeySet.has(key)));
   })();
@@ -587,6 +617,7 @@ function useSidebarThreads(input: {
     activeReorderableThreadKeys,
     draggableThreadKeys,
     groupByProject,
+    projectGroupOrder,
     threads,
     workingShelfEnabled,
     searchableThreads: [
@@ -1371,19 +1402,36 @@ function SidebarSectionHeader(props: {
   );
 }
 
+// Native drag-and-drop keeps group moves out of the thread rows' pointer sensors. The list handles
+// dragover and drop, since a group's drop zone is its header plus its rows.
 function SidebarProjectGroupHeader(props: {
+  groupKey: string;
   label: string;
   count: number;
   color: ProjectIconColor;
   divided: boolean;
+  dragging: boolean;
+  isDropTarget: boolean;
+  onDragStart: (groupKey: string) => void;
+  onDragEnd: () => void;
 }) {
   const colorClass = projectIconColorClassName(props.color);
   return (
     <li
       data-testid="sidebar-project-group-header"
+      data-project-group-key={props.groupKey}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", props.label);
+        props.onDragStart(props.groupKey);
+      }}
+      onDragEnd={props.onDragEnd}
       className={cn(
-        "mx-0.5 list-none",
+        "mx-0.5 cursor-grab list-none",
         props.divided ? "mt-2 border-t border-sidebar-border pt-1.5" : "mt-1",
+        props.dragging && "opacity-50",
+        props.isDropTarget && !props.dragging && "rounded-md bg-sidebar-row-hover",
       )}
     >
       <div className="flex h-6 items-center gap-1.5 px-2">
@@ -1395,6 +1443,15 @@ function SidebarProjectGroupHeader(props: {
       </div>
     </li>
   );
+}
+
+function projectGroupKeyAtY(list: HTMLElement, clientY: number): string | null {
+  let match: string | null = null;
+  for (const header of list.querySelectorAll<HTMLElement>("[data-project-group-key]")) {
+    if (match !== null && header.getBoundingClientRect().top > clientY) break;
+    match = header.dataset.projectGroupKey ?? null;
+  }
+  return match;
 }
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
@@ -3110,6 +3167,7 @@ export default function Sidebar() {
     activeKeysById,
     routeRowThreadKey,
     groupByProject,
+    projectGroupOrder,
   } = useSidebarThreads({
     projectScopeKey,
     scopedProjectKeys,
@@ -3636,6 +3694,29 @@ export default function Sidebar() {
       activationY:
         event.activatorEvent instanceof PointerEvent ? event.activatorEvent.clientY : null,
     });
+  };
+  const [draggedProjectGroupKey, setDraggedProjectGroupKey] = useState<string | null>(null);
+  const [projectGroupDropTargetKey, setProjectGroupDropTargetKey] = useState<string | null>(null);
+  const endProjectGroupDrag = () => {
+    setDraggedProjectGroupKey(null);
+    setProjectGroupDropTargetKey(null);
+  };
+  const handleProjectGroupDragOver = (event: ReactDragEvent<HTMLElement>) => {
+    if (draggedProjectGroupKey === null) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setProjectGroupDropTargetKey(projectGroupKeyAtY(event.currentTarget, event.clientY));
+  };
+  const handleProjectGroupDrop = (event: ReactDragEvent<HTMLElement>) => {
+    if (draggedProjectGroupKey === null) return;
+    event.preventDefault();
+    const targetKey = projectGroupKeyAtY(event.currentTarget, event.clientY);
+    const nextOrder =
+      targetKey === null
+        ? null
+        : moveProjectGroup(projectGroupOrder, draggedProjectGroupKey, targetKey);
+    endProjectGroupDrag();
+    if (nextOrder !== null) void updateClientSettings({ sidebarProjectGroupOrder: nextOrder });
   };
   const sidebarListItemsFresh = ((): readonly SidebarListItem[] => {
     const rowsOf = (
@@ -4892,6 +4973,8 @@ export default function Sidebar() {
                     // presentational list also makes its implicit listitems
                     // presentational while preserving every descendant control.
                     role="presentation"
+                    onDragOver={handleProjectGroupDragOver}
+                    onDrop={handleProjectGroupDrop}
                     className={cn(
                       "relative flex flex-col gap-px",
                       sidebarListItems.length > 0 && "flex-1",
@@ -5045,6 +5128,11 @@ export default function Sidebar() {
                               items.push(
                                 <SidebarProjectGroupHeader
                                   key={`project-group:${groupKey}`}
+                                  groupKey={groupKey}
+                                  dragging={draggedProjectGroupKey === groupKey}
+                                  isDropTarget={projectGroupDropTargetKey === groupKey}
+                                  onDragStart={setDraggedProjectGroupKey}
+                                  onDragEnd={endProjectGroupDrag}
                                   label={info.displayName}
                                   count={activeGroupCounts.get(groupKey) ?? 0}
                                   color={info.color}
