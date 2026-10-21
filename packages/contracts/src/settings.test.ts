@@ -707,6 +707,17 @@ describe("ClientSettings sidebar", () => {
     expect(patch.sidebarProjectGroupOrder).toEqual(["b", "a"]);
   });
 
+  it("persists group pin destinations and defaults older clients to top pins", () => {
+    expect(decodeClientSettings({}).sidebarGroupPinnedThreadKeys).toEqual([]);
+    const keys = ["environment-a:thread-1", "environment-b:thread-1"];
+    expect(
+      decodeClientSettings({ sidebarGroupPinnedThreadKeys: keys }).sidebarGroupPinnedThreadKeys,
+    ).toEqual(keys);
+    expect(
+      decodeClientSettingsPatch({ sidebarGroupPinnedThreadKeys: [] }).sidebarGroupPinnedThreadKeys,
+    ).toEqual([]);
+  });
+
   it("defaults project attention indicators on and preserves an explicit opt-out", () => {
     expect(decodeClientSettings({}).sidebarProjectAttentionIndicator).toBe(true);
     expect(

@@ -5806,7 +5806,9 @@ export default function ChatView(props: ChatViewProps) {
         if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
         if (!isServerThread || !activeThreadRef || !supportsPinning) return;
         void (
-          activeThreadPinned ? confirmAndUnpinThread(activeThreadRef) : pinThread(activeThreadRef)
+          activeThreadPinned
+            ? confirmAndUnpinThread(activeThreadRef)
+            : pinThread(activeThreadRef, { destination: "top" })
         ).then(
           toastPinFailure(activeThreadPinned ? "Failed to unpin thread" : "Failed to pin thread"),
         );

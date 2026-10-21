@@ -148,7 +148,7 @@ import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { updateClientSettings, useClientSettings } from "../hooks/useSettings";
+import { getClientSettings, updateClientSettings, useClientSettings } from "../hooks/useSettings";
 import { sortThreads } from "../lib/threadSort";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -487,6 +487,8 @@ function useSidebarThreads(input: {
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const groupByProject = useClientSettings((s) => s.sidebarGroupByProject);
   const sortByStatus = useClientSettings((s) => s.sidebarSortByStatus);
+  const groupPinnedThreadKeys = useClientSettings((s) => s.sidebarGroupPinnedThreadKeys);
+  const groupPinnedKeySet = new Set(groupPinnedThreadKeys);
   const savedProjectGroupOrder = useClientSettings((s) => s.sidebarProjectGroupOrder);
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
@@ -534,14 +536,25 @@ function useSidebarThreads(input: {
   const partitionNextWakeAt = partition.snoozedThreads[0]?.snoozedUntil ?? null;
   if (partitionNextWakeAt !== nextSnoozeWakeAt) setNextSnoozeWakeAt(partitionNextWakeAt);
 
-  const { pinnedThreads, workingThreads, snoozedThreads, settledThreads } = partition;
+  const { workingThreads, snoozedThreads, settledThreads } = partition;
+  const pinnedThreads = groupByProject
+    ? partition.pinnedThreads.filter((thread) => !groupPinnedKeySet.has(threadShellKey(thread)))
+    : partition.pinnedThreads;
+  const groupPinnedThreads = groupByProject
+    ? partition.pinnedThreads.filter((thread) => groupPinnedKeySet.has(threadShellKey(thread)))
+    : [];
   // Rows can't be dragged while the list is regrouped or re-sorted: a drop would be undone by the
   // next sort.
   const lockActiveOrder = groupByProject || sortByStatus;
   const { activeThreads, projectGroupOrder } = (() => {
-    const recent = sortByStatus
-      ? sortThreadsByStatusTier(sortThreads(partition.activeThreads, "updated_at"))
+    const unpinned = sortByStatus
+      ? sortThreads(partition.activeThreads, "updated_at")
       : partition.activeThreads;
+    const recent = sortThreadsByStatusTier([...groupPinnedThreads, ...unpinned], {
+      isGroupPinned: (thread) =>
+        thread.pinnedAt != null && groupByProject && groupPinnedKeySet.has(threadShellKey(thread)),
+      sortByStatus,
+    });
     if (!groupByProject) return { activeThreads: recent, projectGroupOrder: [] };
     const groupKeyOf = (thread: EnvironmentThreadShell) =>
       sidebarProjectGroupKey(projectGroupInfoByKey, thread);
@@ -612,7 +625,11 @@ function useSidebarThreads(input: {
   }
   return {
     routeRowThreadKey,
-    ...partition,
+    snoozeNow: partition.snoozeNow,
+    pinnedThreads,
+    workingThreads,
+    snoozedThreads,
+    settledThreads,
     activeThreads,
     activeReorderableThreadKeys,
     draggableThreadKeys,
@@ -1402,8 +1419,7 @@ function SidebarSectionHeader(props: {
   );
 }
 
-// Native drag-and-drop keeps group moves out of the thread rows' pointer sensors. The list handles
-// dragover and drop, since a group's drop zone is its header plus its rows.
+// Native drag-and-drop keeps group moves out of the thread rows' pointer sensors.
 function SidebarProjectGroupHeader(props: {
   groupKey: string;
   label: string;
@@ -1412,7 +1428,6 @@ function SidebarProjectGroupHeader(props: {
   color: ProjectIconColor;
   divided: boolean;
   dragging: boolean;
-  isDropTarget: boolean;
   onDragStart: (groupKey: string) => void;
   onDragEnd: () => void;
 }) {
@@ -1432,7 +1447,6 @@ function SidebarProjectGroupHeader(props: {
         "mx-0.5 cursor-grab list-none",
         props.divided ? "mt-2 border-t border-sidebar-border pt-1.5" : "mt-1",
         props.dragging && "opacity-50",
-        props.isDropTarget && !props.dragging && "rounded-md bg-sidebar-row-hover",
       )}
     >
       <div
@@ -1466,8 +1480,12 @@ function SidebarProjectGroupHeader(props: {
 
 function projectGroupKeyAtY(list: HTMLElement, clientY: number): string | null {
   let match: string | null = null;
+  const rect = list.getBoundingClientRect();
+  const scale = list.offsetWidth > 0 ? rect.width / list.offsetWidth : 1;
+  const y = (clientY - rect.top) / scale;
   for (const header of list.querySelectorAll<HTMLElement>("[data-project-group-key]")) {
-    if (match !== null && header.getBoundingClientRect().top > clientY) break;
+    // Layout positions ignore the temporary transforms used to animate the preview.
+    if (match !== null && header.offsetTop > y) break;
     match = header.dataset.projectGroupKey ?? null;
   }
   return match;
@@ -1677,7 +1695,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   pin: (
     <>
       <PinIcon aria-hidden className="size-3" />
-      Pin
+      Pin to top
     </>
   ),
   unpin: (
@@ -1714,6 +1732,7 @@ type SidebarThreadRowProps = {
   snoozeSupported: boolean;
   pinningSupported: boolean;
   isPinned: boolean;
+  isTopPinned: boolean;
   sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
   dragOverPinned: boolean;
@@ -2086,14 +2105,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     props.isActive
-      ? "bg-sidebar-row-active text-sidebar-foreground"
+      ? props.isTopPinned
+        ? "bg-sidebar-pin/20 text-sidebar-foreground"
+        : "bg-sidebar-row-active text-sidebar-foreground"
       : isSelected || props.sweepAction !== null
         ? "bg-sidebar-row-selected text-sidebar-foreground"
-        : hasUnsentDraft
-          ? cn(draftSurfaceClassName, "text-sidebar-foreground")
-          : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+        : props.isTopPinned
+          ? "bg-sidebar-pin/10 text-sidebar-foreground hover:bg-sidebar-pin/15"
+          : hasUnsentDraft
+            ? cn(draftSurfaceClassName, "text-sidebar-foreground")
+            : shouldRecede
+              ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
     shouldRecede &&
       status === "working" &&
       "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
@@ -2243,9 +2266,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           render={
             <button
               type="button"
-              aria-label="Unpin thread"
+              aria-label={props.isTopPinned ? "Unpin from top" : "Unpin from group"}
               onClick={handleUnpinClick}
-              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-sidebar-pin outline-none transition-colors hover:text-sidebar-pin/80 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             />
           }
         >
@@ -2258,14 +2281,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             className="hidden size-3 shrink-0 group-hover/unpin:block group-focus-visible/unpin:block"
           />
         </TooltipTrigger>
-        <TooltipPopup>Unpin thread</TooltipPopup>
+        <TooltipPopup>{props.isTopPinned ? "Unpin from top" : "Unpin from group"}</TooltipPopup>
       </Tooltip>
     ) : (
-      <PinIcon
-        aria-label="Pinned"
-        role="img"
-        className="size-3 shrink-0 text-muted-foreground/65"
-      />
+      <PinIcon aria-label="Pinned" role="img" className="size-3 shrink-0 text-sidebar-pin" />
     )
   ) : null;
 
@@ -3654,13 +3673,13 @@ export default function Sidebar() {
   ) {
     setOptimisticDrop(null);
   }
-  const attemptPin = (threadRef: ScopedThreadRef) => {
+  const attemptPin = (threadRef: ScopedThreadRef, destination: "top" | "group" = "top") => {
     void (async () => {
       // Fresh pins take the top of the arranged run: pinThread computes a
       // key before the smallest key across ALL pinned shells — including
       // snoozed pins hidden from this list, whose keys are still part of
       // the run — so the new pin can't land beneath a hidden head.
-      const result = await pinThread(threadRef);
+      const result = await pinThread(threadRef, { destination });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         toastManager.add(
@@ -3716,25 +3735,29 @@ export default function Sidebar() {
     });
   };
   const [draggedProjectGroupKey, setDraggedProjectGroupKey] = useState<string | null>(null);
-  const [projectGroupDropTargetKey, setProjectGroupDropTargetKey] = useState<string | null>(null);
+  const [projectGroupPreviewOrder, setProjectGroupPreviewOrder] = useState<
+    readonly string[] | null
+  >(null);
   const endProjectGroupDrag = () => {
     setDraggedProjectGroupKey(null);
-    setProjectGroupDropTargetKey(null);
+    setProjectGroupPreviewOrder(null);
   };
   const handleProjectGroupDragOver = (event: ReactDragEvent<HTMLElement>) => {
     if (draggedProjectGroupKey === null) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    setProjectGroupDropTargetKey(projectGroupKeyAtY(event.currentTarget, event.clientY));
+    const targetKey = projectGroupKeyAtY(event.currentTarget, event.clientY);
+    if (targetKey === null) return;
+    setProjectGroupPreviewOrder(
+      (current) =>
+        moveProjectGroup(current ?? projectGroupOrder, draggedProjectGroupKey, targetKey) ??
+        current,
+    );
   };
   const handleProjectGroupDrop = (event: ReactDragEvent<HTMLElement>) => {
     if (draggedProjectGroupKey === null) return;
     event.preventDefault();
-    const targetKey = projectGroupKeyAtY(event.currentTarget, event.clientY);
-    const nextOrder =
-      targetKey === null
-        ? null
-        : moveProjectGroup(projectGroupOrder, draggedProjectGroupKey, targetKey);
+    const nextOrder = projectGroupPreviewOrder;
     endProjectGroupDrag();
     if (nextOrder !== null) void updateClientSettings({ sidebarProjectGroupOrder: nextOrder });
   };
@@ -3761,7 +3784,15 @@ export default function Sidebar() {
     const pinnedRows = rowsOf(pinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
-    const activeRows = rowsOf(activeThreads, "active");
+    const previewThreads =
+      projectGroupPreviewOrder === null
+        ? activeThreads
+        : groupThreadsByProject(
+            activeThreads,
+            (thread) => sidebarProjectGroupKey(projectGroupInfoByKey, thread),
+            projectGroupPreviewOrder,
+          );
+    const activeRows = rowsOf(previewThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
     items.push(...activeRows);
     if (workingThreads.length > 0) {
@@ -4005,7 +4036,10 @@ export default function Sidebar() {
         case "pin":
           if (
             !(await run(
-              pinThread(threadRef, plan.orderKey === undefined ? {} : { orderKey: plan.orderKey }),
+              pinThread(threadRef, {
+                destination: "top",
+                ...(plan.orderKey === undefined ? {} : { orderKey: plan.orderKey }),
+              }),
               "Failed to pin thread",
             ))
           )
@@ -4445,6 +4479,9 @@ export default function Sidebar() {
                   }
                 : null,
               isPinned,
+              isGroupPinned:
+                isPinned && getClientSettings().sidebarGroupPinnedThreadKeys.includes(threadKey),
+              groupPinningEnabled: getClientSettings().sidebarGroupByProject,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
@@ -4522,6 +4559,9 @@ export default function Sidebar() {
             return;
           case "pin":
             attemptPin(threadRef);
+            return;
+          case "pin-group":
+            attemptPin(threadRef, "group");
             return;
           case "unpin":
             attemptUnpin(threadRef);
@@ -5044,6 +5084,7 @@ export default function Sidebar() {
                                 .threadPinning === true
                             }
                             isPinned={thread.pinnedAt != null}
+                            isTopPinned={section === "pinned"}
                             dropVerb={
                               dragState?.activeKey === threadKey
                                 ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
@@ -5157,8 +5198,11 @@ export default function Sidebar() {
                                   key={`project-group:${groupKey}`}
                                   groupKey={groupKey}
                                   dragging={draggedProjectGroupKey === groupKey}
-                                  isDropTarget={projectGroupDropTargetKey === groupKey}
-                                  onDragStart={setDraggedProjectGroupKey}
+                                  onDragStart={(key) => {
+                                    listMotionRef.current?.suspend();
+                                    setDraggedProjectGroupKey(key);
+                                    setProjectGroupPreviewOrder(projectGroupOrder);
+                                  }}
                                   onDragEnd={endProjectGroupDrag}
                                   label={info.displayName}
                                   count={activeGroupCounts.get(groupKey) ?? 0}
@@ -5170,7 +5214,9 @@ export default function Sidebar() {
                               groupHeadersRendered += 1;
                             }
                           }
-                          items.push(renderThreadRow(thread, item.section));
+                          if (draggedProjectGroupKey === null || item.section !== "active") {
+                            items.push(renderThreadRow(thread, item.section));
+                          }
                           continue;
                         }
                         switch (item.marker) {

@@ -5,6 +5,7 @@ export type ThreadActionMenuId =
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
+  | "pin-group"
   | "pin"
   | "unpin"
   | "settle"
@@ -71,6 +72,8 @@ export interface ThreadActionMenuState {
     readonly isActive: boolean;
   } | null;
   readonly isPinned: boolean;
+  readonly isGroupPinned?: boolean;
+  readonly groupPinningEnabled?: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
@@ -116,9 +119,21 @@ export function buildThreadActionMenuItems(
       : []),
     ...(state.supports.pinning
       ? [
-          state.isPinned
-            ? { id: "unpin" as const, label: "Unpin thread", icon: "pin-off" }
-            : { id: "pin" as const, label: "Pin thread", icon: "pin" },
+          ...(state.isPinned
+            ? [
+                {
+                  id: "unpin" as const,
+                  label: state.isGroupPinned ? "Unpin from group" : "Unpin from top",
+                  icon: "pin-off",
+                },
+              ]
+            : []),
+          ...(!state.isPinned || state.isGroupPinned
+            ? [{ id: "pin" as const, label: "Pin to top", icon: "pin" }]
+            : []),
+          ...(state.groupPinningEnabled && !state.isGroupPinned
+            ? [{ id: "pin-group" as const, label: "Pin to group", icon: "pin" }]
+            : []),
         ]
       : []),
     ...(state.supports.settlement

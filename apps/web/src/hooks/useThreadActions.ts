@@ -53,7 +53,7 @@ import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import { useClientSettings } from "./useSettings";
+import { getClientSettings, updateClientSettings, useClientSettings } from "./useSettings";
 import * as ThreadUndo from "./threadUndo";
 import { showThreadUndoNotice } from "./showThreadUndoNotice";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -633,7 +633,10 @@ export function useThreadActions() {
     });
   };
 
-  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
+  const pinThread = async (
+    target: ScopedThreadRef,
+    opts: { orderKey?: string; destination?: "top" | "group" } = {},
+  ) => {
     if (!readEnvironmentSupportsPinning(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -650,13 +653,32 @@ export function useThreadActions() {
       ? (opts.orderKey ?? topOfPinnedRunOrderKey())
       : undefined;
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
-    return pinThreadMutation({
+    const key = scopedThreadKey(target);
+    const wasGroupPinned = getClientSettings().sidebarGroupPinnedThreadKeys.includes(key);
+    const setGroupPinned = (groupPinned: boolean) => {
+      const keys = getClientSettings().sidebarGroupPinnedThreadKeys.filter(
+        (entry) => entry !== key,
+      );
+      return updateClientSettings({
+        sidebarGroupPinnedThreadKeys: groupPinned ? [key, ...keys] : keys,
+      });
+    };
+    // Publish the destination before the server can move the row into the pinned section.
+    // Otherwise a group pin briefly leaves its group and shifts every group below it.
+    if (opts.destination !== undefined) {
+      await setGroupPinned(opts.destination === "group");
+    }
+    const result = await pinThreadMutation({
       environmentId: target.environmentId,
       input: {
         threadId: target.threadId,
         ...(orderKey !== undefined ? { orderKey } : {}),
       },
     });
+    if (result._tag === "Failure" && opts.destination !== undefined) {
+      await setGroupPinned(wasGroupPinned);
+    }
+    return result;
   };
 
   const unpinThread = async (target: ScopedThreadRef) => {
