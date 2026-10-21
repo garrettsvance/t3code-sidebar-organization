@@ -446,8 +446,11 @@ export const ClientSettingsSchema = Schema.Struct({
   sidebarWorkingShelfEnabled: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
-  sidebarGroupByProject: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  sidebarSortByStatus: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  sidebarGroupByProject: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  sidebarSortByStatus: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  sidebarProjectAttentionIndicator: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   sidebarProjectGroupOrder: Schema.Array(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
@@ -1648,6 +1651,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarWorkingShelfEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarGroupByProject: Schema.optionalKey(Schema.Boolean),
   sidebarSortByStatus: Schema.optionalKey(Schema.Boolean),
+  sidebarProjectAttentionIndicator: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupOrder: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(

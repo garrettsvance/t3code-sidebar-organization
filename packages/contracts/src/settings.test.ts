@@ -684,23 +684,39 @@ describe("ClientSettings sidebar", () => {
     );
   });
 
-  it("keeps grouping the sidebar by project opt-in and patchable", () => {
-    expect(decodeClientSettings({}).sidebarGroupByProject).toBe(false);
-    expect(decodeClientSettingsPatch({ sidebarGroupByProject: true }).sidebarGroupByProject).toBe(
-      true,
+  it("defaults grouping the sidebar by project on and preserves an explicit opt-out", () => {
+    expect(decodeClientSettings({}).sidebarGroupByProject).toBe(true);
+    expect(decodeClientSettings({ sidebarGroupByProject: false }).sidebarGroupByProject).toBe(
+      false,
+    );
+    expect(decodeClientSettingsPatch({ sidebarGroupByProject: false }).sidebarGroupByProject).toBe(
+      false,
     );
   });
 
-  it("keeps status sorting opt-in and the project group order empty and patchable", () => {
+  it("defaults status sorting on and keeps the project group order empty and patchable", () => {
     const defaults = decodeClientSettings({});
-    expect(defaults.sidebarSortByStatus).toBe(false);
+    expect(defaults.sidebarSortByStatus).toBe(true);
+    expect(decodeClientSettings({ sidebarSortByStatus: false }).sidebarSortByStatus).toBe(false);
     expect(defaults.sidebarProjectGroupOrder).toEqual([]);
     const patch = decodeClientSettingsPatch({
-      sidebarSortByStatus: true,
+      sidebarSortByStatus: false,
       sidebarProjectGroupOrder: ["b", "a"],
     });
-    expect(patch.sidebarSortByStatus).toBe(true);
+    expect(patch.sidebarSortByStatus).toBe(false);
     expect(patch.sidebarProjectGroupOrder).toEqual(["b", "a"]);
+  });
+
+  it("defaults project attention indicators on and preserves an explicit opt-out", () => {
+    expect(decodeClientSettings({}).sidebarProjectAttentionIndicator).toBe(true);
+    expect(
+      decodeClientSettings({ sidebarProjectAttentionIndicator: false })
+        .sidebarProjectAttentionIndicator,
+    ).toBe(false);
+    expect(
+      decodeClientSettingsPatch({ sidebarProjectAttentionIndicator: false })
+        .sidebarProjectAttentionIndicator,
+    ).toBe(false);
   });
 
   it("keeps unpin confirmation opt-in and patchable", () => {

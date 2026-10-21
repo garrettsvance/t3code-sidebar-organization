@@ -1408,6 +1408,7 @@ function SidebarProjectGroupHeader(props: {
   groupKey: string;
   label: string;
   count: number;
+  needsAttention: boolean;
   color: ProjectIconColor;
   divided: boolean;
   dragging: boolean;
@@ -1434,12 +1435,30 @@ function SidebarProjectGroupHeader(props: {
         props.isDropTarget && !props.dragging && "rounded-md bg-sidebar-row-hover",
       )}
     >
-      <div className="flex h-6 items-center gap-1.5 px-2">
+      <div
+        className={cn("flex h-6 items-center gap-1.5 rounded-sm bg-current/10 px-2", colorClass)}
+      >
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full bg-current", colorClass)} />
         <span className={cn("truncate text-2xs font-semibold tracking-wide uppercase", colorClass)}>
           {props.label}
         </span>
         <span className="shrink-0 text-2xs text-sidebar-muted-foreground/70">{props.count}</span>
+        {props.needsAttention ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  role="img"
+                  aria-label="Threads need input or approval"
+                  className="ml-auto shrink-0 text-warning"
+                >
+                  <CircleAlertIcon aria-hidden="true" className="size-3" />
+                </span>
+              }
+            />
+            <TooltipPopup>Threads need input or approval</TooltipPopup>
+          </Tooltip>
+        ) : null}
       </div>
     </li>
   );
@@ -2855,6 +2874,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
 });
 
 export default function Sidebar() {
+  const showProjectAttention = useClientSettings((s) => s.sidebarProjectAttentionIndicator);
   const {
     projects,
     serverConfigs,
@@ -5104,9 +5124,16 @@ export default function Sidebar() {
                         />,
                       ];
                       const activeGroupCounts = new Map<string, number>();
+                      const attentionGroupKeys = new Set<string>();
                       if (groupByProject) {
                         for (const thread of activeThreads) {
                           const groupKey = sidebarProjectGroupKey(projectGroupInfoByKey, thread);
+                          if (showProjectAttention) {
+                            const status = resolveSidebarThreadStatus(thread);
+                            if (status === "input" || status === "approval") {
+                              attentionGroupKeys.add(groupKey);
+                            }
+                          }
                           activeGroupCounts.set(
                             groupKey,
                             (activeGroupCounts.get(groupKey) ?? 0) + 1,
@@ -5135,6 +5162,7 @@ export default function Sidebar() {
                                   onDragEnd={endProjectGroupDrag}
                                   label={info.displayName}
                                   count={activeGroupCounts.get(groupKey) ?? 0}
+                                  needsAttention={attentionGroupKeys.has(groupKey)}
                                   color={info.color}
                                   divided={groupHeadersRendered > 0}
                                 />,
