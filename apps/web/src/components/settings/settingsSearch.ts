@@ -335,6 +335,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sidebar active threads sections headers color divider"],
   },
   {
+    id: "sort-by-status",
+    title: "Sort by status",
+    to: "/settings/general",
+    searchTerms: ["sidebar active threads order input waiting done working needs"],
+  },
+  {
     id: "auto-settle-inactive-threads",
     title: "Auto-settle inactive threads",
     to: "/settings/general",

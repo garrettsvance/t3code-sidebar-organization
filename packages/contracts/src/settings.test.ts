@@ -691,6 +691,18 @@ describe("ClientSettings sidebar", () => {
     );
   });
 
+  it("keeps status sorting opt-in and the project group order empty and patchable", () => {
+    const defaults = decodeClientSettings({});
+    expect(defaults.sidebarSortByStatus).toBe(false);
+    expect(defaults.sidebarProjectGroupOrder).toEqual([]);
+    const patch = decodeClientSettingsPatch({
+      sidebarSortByStatus: true,
+      sidebarProjectGroupOrder: ["b", "a"],
+    });
+    expect(patch.sidebarSortByStatus).toBe(true);
+    expect(patch.sidebarProjectGroupOrder).toEqual(["b", "a"]);
+  });
+
   it("keeps unpin confirmation opt-in and patchable", () => {
     expect(decodeClientSettings({}).confirmThreadUnpin).toBe(false);
     expect(decodeClientSettingsPatch({ confirmThreadUnpin: true }).confirmThreadUnpin).toBe(true);

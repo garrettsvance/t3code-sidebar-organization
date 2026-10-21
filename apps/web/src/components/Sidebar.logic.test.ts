@@ -16,6 +16,9 @@ import {
   filterSidebarProjectScopeItems,
   filterSidebarV2VisibleThreads,
   groupThreadsByProject,
+  moveProjectGroup,
+  resolveProjectGroupOrder,
+  sortThreadsByStatusTier,
   formatWorkingDurationLabel,
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
@@ -456,6 +459,63 @@ describe("sidebar thread lineage helpers", () => {
       "c1",
     ]);
     expect(groupThreadsByProject([], () => "x")).toEqual([]);
+  });
+
+  it("places project groups by saved order and leaves unplaced groups last", () => {
+    const threads = ["a1", "b1", "a2", "c1", "b2"];
+    expect(groupThreadsByProject(threads, (thread) => thread[0]!, ["c", "a"])).toEqual([
+      "c1",
+      "a1",
+      "a2",
+      "b1",
+      "b2",
+    ]);
+  });
+
+  it("orders unplaced project groups by name so they hold still as threads change", () => {
+    const present = [
+      { key: "k-zed", label: "Zed" },
+      { key: "k-api", label: "api" },
+      { key: "k-web", label: "Web" },
+    ];
+    expect(resolveProjectGroupOrder([], present)).toEqual(["k-api", "k-web", "k-zed"]);
+    expect(resolveProjectGroupOrder(["k-zed", "k-gone"], present)).toEqual([
+      "k-zed",
+      "k-gone",
+      "k-api",
+      "k-web",
+    ]);
+  });
+
+  it("moves a project group to its drop target and keeps hidden groups in place", () => {
+    const order = ["a", "gone", "b", "c"];
+    expect(moveProjectGroup(order, "c", "a")).toEqual(["c", "a", "gone", "b"]);
+    expect(moveProjectGroup(order, "a", "b")).toEqual(["gone", "b", "a", "c"]);
+    expect(moveProjectGroup(order, "a", "a")).toBeNull();
+    expect(moveProjectGroup(order, "a", "missing")).toBeNull();
+  });
+
+  it("sorts threads that need input first and working threads last, keeping recency within a tier", () => {
+    const thread = (id: string, overrides: Record<string, unknown>) => ({
+      id,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      pendingSubagentRequest: null,
+      runtime: null,
+      ...overrides,
+    });
+    const running = { status: "running" };
+    const threads = [
+      thread("working-new", { runtime: running }),
+      thread("done-new", {}),
+      thread("input", { hasPendingUserInput: true }),
+      thread("working-old", { runtime: running }),
+      thread("approval", { hasPendingApprovals: true }),
+      thread("done-old", {}),
+    ];
+    expect(
+      sortThreadsByStatusTier(threads as never[]).map((entry) => (entry as { id: string }).id),
+    ).toEqual(["input", "approval", "done-new", "done-old", "working-new", "working-old"]);
   });
 
   it("identifies subagent threads so the sidebar can hide them", () => {
