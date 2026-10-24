@@ -888,7 +888,7 @@ function useSidebarLookups() {
         groupKey: group.projectKey,
         displayName: group.displayName,
         color:
-          group.projectIcon?.kind === "monogram"
+          group.projectIcon?.kind === "monogram" || group.projectIcon?.kind === "lucide"
             ? group.projectIcon.color
             : deriveProjectIdentity(group.displayName).color,
       };
