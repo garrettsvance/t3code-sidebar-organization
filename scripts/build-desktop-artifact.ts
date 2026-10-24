@@ -2773,7 +2773,17 @@ export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
   return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
 }
 
-export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
+export function resolveDesktopBuildIconAssets(
+  version: string,
+  iconTheme?: string,
+): DesktopBuildIconAssets {
+  if (iconTheme === "dracula") {
+    return {
+      macIconPng: "assets/dracula/macos-1024.png",
+      linuxIconPng: "assets/dracula/universal-1024.png",
+      windowsIconIco: "assets/dracula/windows.ico",
+    };
+  }
   if (resolveDesktopUpdateChannel(version) === "nightly") {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
@@ -3654,7 +3664,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   });
 
   const appVersion = options.version ?? serverPackageJson.version;
-  const iconAssets = resolveDesktopBuildIconAssets(appVersion);
+  const iconTheme = yield* Config.String("T3CODE_ICON_THEME").pipe(Config.withDefault(""));
+  const iconAssets = resolveDesktopBuildIconAssets(appVersion, iconTheme);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
   const stageRoot = yield* mkdir({

@@ -28,44 +28,78 @@ const layerEnvironment = DesktopEnvironment.layer({
 );
 
 describe("DesktopAssets", () => {
-  it.effect("uses canonical source-tree icons for unpackaged development", () =>
-    Effect.gen(function* () {
-      const layerDevelopmentEnvironment = DesktopEnvironment.layer({
-        dirname: "/repo/apps/desktop/dist-electron",
-        homeDirectory: "/Users/alice",
-        platform: "linux",
-        processArch: "x64",
-        appVersion: "1.2.3",
-        appPath: "/repo",
-        isPackaged: false,
-        resourcesPath: "/repo/apps/desktop/resources",
-        runningUnderArm64Translation: false,
-      }).pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            NodeServices.layer,
-            NodePath.layerPosix,
-            DesktopConfig.layerTest({ VITE_DEV_SERVER_URL: "http://localhost:5733" }),
+  it.effect.each([
+    {
+      platform: "linux",
+      theme: undefined,
+      directory: "dev",
+      png: "blueprint-universal-1024.png",
+      ico: "blueprint-windows.ico",
+    },
+    {
+      platform: "darwin",
+      theme: "dracula",
+      directory: "dracula",
+      png: "macos-1024.png",
+      ico: "windows.ico",
+    },
+    {
+      platform: "linux",
+      theme: "dracula",
+      directory: "dracula",
+      png: "universal-1024.png",
+      ico: "windows.ico",
+    },
+    {
+      platform: "win32",
+      theme: "dracula",
+      directory: "dracula",
+      png: "universal-1024.png",
+      ico: "windows.ico",
+    },
+  ] as const)(
+    "uses $directory source-tree icons on $platform",
+    ({ platform, theme, directory, png, ico }) =>
+      Effect.gen(function* () {
+        const layerDevelopmentEnvironment = DesktopEnvironment.layer({
+          dirname: "/repo/apps/desktop/dist-electron",
+          homeDirectory: "/Users/alice",
+          platform,
+          processArch: "x64",
+          appVersion: "1.2.3",
+          appPath: "/repo",
+          isPackaged: false,
+          resourcesPath: "/repo/apps/desktop/resources",
+          runningUnderArm64Translation: false,
+        }).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              NodeServices.layer,
+              NodePath.layerPosix,
+              DesktopConfig.layerTest({
+                VITE_DEV_SERVER_URL: "http://localhost:5733",
+                T3CODE_ICON_THEME: theme,
+              }),
+            ),
           ),
-        ),
-      );
-      const layerFileSystem = FileSystem.layerNoop({
-        exists: (path) => Effect.succeed(String(path).includes("/assets/dev/")),
-      });
-      const assets = yield* DesktopAssets.DesktopAssets.pipe(
-        Effect.provide(
-          DesktopAssets.layer.pipe(
-            Layer.provide(Layer.merge(layerFileSystem, layerDevelopmentEnvironment)),
+        );
+        const layerFileSystem = FileSystem.layerNoop({
+          exists: (path) => Effect.succeed(String(path).includes(`/assets/${directory}/`)),
+        });
+        const assets = yield* DesktopAssets.DesktopAssets.pipe(
+          Effect.provide(
+            DesktopAssets.layer.pipe(
+              Layer.provide(Layer.merge(layerFileSystem, layerDevelopmentEnvironment)),
+            ),
           ),
-        ),
-      );
+        );
 
-      const icons = yield* assets.iconPaths;
+        const icons = yield* assets.iconPaths;
 
-      assert.match(Option.getOrThrow(icons.ico), /assets\/dev\/blueprint-windows\.ico$/);
-      assert.match(Option.getOrThrow(icons.png), /assets\/dev\/blueprint-universal-1024\.png$/);
-      assert.isTrue(Option.isNone(icons.icns));
-    }),
+        assert.equal(Option.getOrThrow(icons.ico), `/repo/assets/${directory}/${ico}`);
+        assert.equal(Option.getOrThrow(icons.png), `/repo/assets/${directory}/${png}`);
+        assert.isTrue(Option.isNone(icons.icns));
+      }),
   );
 
   it.effect("preserves the failed asset candidate and filesystem cause", () =>

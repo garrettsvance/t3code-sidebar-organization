@@ -112,6 +112,7 @@ export function makeDevelopmentEnvironmentScript(environment) {
     ["T3CODE_PORT", environment.T3CODE_PORT],
     ["T3CODE_HOME", environment.T3CODE_HOME],
     ["T3CODE_COMMIT_HASH", environment.T3CODE_COMMIT_HASH],
+    ["T3CODE_ICON_THEME", environment.T3CODE_ICON_THEME],
     ["T3CODE_OTLP_TRACES_URL", environment.T3CODE_OTLP_TRACES_URL],
     ["T3CODE_OTLP_EXPORT_INTERVAL_MS", environment.T3CODE_OTLP_EXPORT_INTERVAL_MS],
     ["T3CODE_OTLP_HEADERS", environment.T3CODE_OTLP_HEADERS],
@@ -201,7 +202,17 @@ function registerMacLauncherBundle(appBundlePath) {
 }
 
 // Bundle-internal paths are macOS paths whatever host builds them.
-export function resolveMacLauncherIconPaths(runtimeDir, development = isDevelopment) {
+export function resolveMacLauncherIconPaths(
+  runtimeDir,
+  development = isDevelopment,
+  theme = process.env.T3CODE_ICON_THEME,
+) {
+  if (theme === "dracula") {
+    return {
+      sourceIconPath: NodePath.join(repoRoot, "assets", "dracula", "macos-1024.png"),
+      generatedIconPath: NodePath.posix.join(runtimeDir, "icon-dracula.icns"),
+    };
+  }
   return {
     sourceIconPath: development ? developmentMacIconPngPath : productionMacIconPngPath,
     generatedIconPath: NodePath.posix.join(
@@ -360,6 +371,7 @@ function buildMacLauncher(electronBinaryPath) {
     sourceAppBundlePath,
     sourceAppMtimeMs: NodeFS.statSync(sourceAppBundlePath).mtimeMs,
     iconMtimeMs: NodeFS.statSync(iconPath).mtimeMs,
+    iconPath,
     appBundleId: APP_BUNDLE_ID,
     appProtocolSchemes: APP_PROTOCOL_SCHEMES,
   };

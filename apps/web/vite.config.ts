@@ -174,6 +174,13 @@ export default defineConfig(() => {
   return {
     assetsInclude: ["**/*.wasm"],
     plugins: [
+      process.env.T3CODE_ICON_THEME === "dracula" && {
+        name: "dracula-icons",
+        transformIndexHtml: (html: string) =>
+          html
+            .replaceAll('"/favicon.ico"', '"/dracula/favicon.ico"')
+            .replaceAll('"/apple-touch-icon.png"', '"/dracula/apple-touch-icon.png"'),
+      },
       devCompressionPlugin(),
       thirdPartyLicensesPlugin({
         bundleName: "web",
