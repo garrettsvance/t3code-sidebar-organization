@@ -275,15 +275,43 @@ describe("buildProjectGroups", () => {
     );
   });
 
-  it("keeps the repository label when shared titles match its repository name", () => {
+  it.each(["t3code", "T3 Code"])(
+    "honors a shared title matching the repository name or display name: %s",
+    (title) => {
+      const projects = [
+        makeProject("first", "/work/t3code", { title }),
+        makeProject("second", "/work/t3code-2", { title }),
+      ];
+
+      expect(buildProjectGroups({ projects, settings: settings("repository") })[0]?.label).toBe(
+        title,
+      );
+    },
+  );
+
+  it("shows a repository group's saved rename for a root and nested project", () => {
+    const identity = {
+      ...repositoryIdentity,
+      rootPath: "/work/homelab",
+      name: "homelab",
+      displayName: "garrettsvance/homelab",
+    };
     const projects = [
-      makeProject("first", "/work/t3code", { title: "t3code" }),
-      makeProject("second", "/work/t3code-2", { title: "t3code" }),
+      makeProject("root", "/work/homelab", { title: "homelab", repositoryIdentity: identity }),
+      makeProject("nested", "/work/homelab/finances", {
+        title: "finances",
+        repositoryIdentity: identity,
+      }),
     ];
 
     expect(buildProjectGroups({ projects, settings: settings("repository") })[0]?.label).toBe(
-      "T3 Code",
+      "garrettsvance/homelab",
     );
+    const renamed = projects.map((project) => ({ ...project, title: "homelab" }));
+    const groups = buildProjectGroups({ projects: renamed, settings: settings("repository") });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.label).toBe("homelab");
+    expect(groups[0]?.memberProjectRefs).toHaveLength(2);
   });
 
   it("keeps a fork apart from its upstream checkout and labels it by its own remote", () => {

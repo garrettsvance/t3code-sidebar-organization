@@ -203,6 +203,9 @@ export function deriveProjectGroupLabel(input: {
   readonly members: ReadonlyArray<Pick<EnvironmentProject, "title" | "repositoryIdentity">>;
 }): string {
   const sharedTitles = uniqueNonEmptyValues(input.members.map((member) => member.title));
+  if (sharedTitles.length === 1) {
+    return sharedTitles[0]!;
+  }
   const sharedDisplayNames = uniqueNonEmptyValues(
     input.members.map((member) =>
       member.repositoryIdentity ? repositoryGroupingDisplayNameOf(member.repositoryIdentity) : null,
@@ -211,15 +214,6 @@ export function deriveProjectGroupLabel(input: {
   const sharedRepositoryNames = uniqueNonEmptyValues(
     input.members.map((member) => member.repositoryIdentity?.name),
   );
-  const sharedTitle = sharedTitles[0];
-  if (
-    sharedTitles.length === 1 &&
-    sharedTitle !== undefined &&
-    !sharedDisplayNames.includes(sharedTitle) &&
-    !sharedRepositoryNames.includes(sharedTitle)
-  ) {
-    return sharedTitle;
-  }
   if (sharedDisplayNames.length === 1) {
     return sharedDisplayNames[0]!;
   }
