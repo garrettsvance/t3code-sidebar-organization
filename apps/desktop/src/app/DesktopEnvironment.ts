@@ -39,6 +39,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly processArch: string;
     readonly isPackaged: boolean;
     readonly isDevelopment: boolean;
+    readonly iconTheme?: string | undefined;
     readonly appVersion: string;
     readonly appPath: string;
     readonly resourcesPath: string;
@@ -147,6 +148,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const config = yield* DesktopConfig.DesktopConfig;
   const homeDirectory = input.homeDirectory;
   const devServerUrl = config.devServerUrl;
+  const iconTheme = Option.getOrUndefined(config.iconTheme);
   const isDevelopment = Option.isSome(devServerUrl);
   const appDataDirectory =
     input.platform === "win32"
@@ -205,6 +207,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     logDir: path.join(stateDir, "logs"),
     browserArtifactsDir: path.join(stateDir, "browser-artifacts"),
     rootDir,
+    iconTheme,
     appRoot,
     serverRoot,
     backendEntryPath: path.join(serverRoot, "apps/server/dist/bin.mjs"),

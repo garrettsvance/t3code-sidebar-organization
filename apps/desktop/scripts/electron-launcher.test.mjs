@@ -153,6 +153,18 @@ describe("electron development launcher", () => {
     assert.match(production.sourceIconPath, /assets[\\/]prod[\\/]black-macos-1024\.png$/);
     assert.equal(production.generatedIconPath, "/runtime/icon-prod.icns");
   });
+
+  it("keeps the Dracula launcher cache separate from the original icons", () => {
+    for (const development of [true, false]) {
+      const icon = resolveMacLauncherIconPaths("/runtime", development, "dracula");
+      assert.match(icon.sourceIconPath, /assets[\\/]dracula[\\/]macos-1024\.png$/);
+      assert.equal(icon.generatedIconPath, "/runtime/icon-dracula.icns");
+    }
+    assert.include(
+      makeDevelopmentEnvironmentScript({ T3CODE_ICON_THEME: "dracula" }),
+      "T3CODE_ICON_THEME",
+    );
+  });
 });
 
 async function startupCleanupPattern(desktopDir) {

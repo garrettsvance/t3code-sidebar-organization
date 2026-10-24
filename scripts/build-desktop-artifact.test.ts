@@ -568,6 +568,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
   });
 
+  it("allows Dracula icons on stable and nightly desktop builds", () => {
+    for (const version of ["0.0.17", "0.0.17-nightly.20260413.42"]) {
+      assert.deepStrictEqual(resolveDesktopBuildIconAssets(version, "dracula"), {
+        macIconPng: "assets/dracula/macos-1024.png",
+        linuxIconPng: "assets/dracula/universal-1024.png",
+        windowsIconIco: "assets/dracula/windows.ico",
+      });
+      assert.deepStrictEqual(
+        resolveDesktopBuildIconAssets(version, ""),
+        resolveDesktopBuildIconAssets(version),
+      );
+    }
+  });
+
   it.effect("resolves GitHub desktop publish config from Effect config", () =>
     Effect.gen(function* () {
       const latestConfig = yield* resolveGitHubPublishConfig("latest").pipe(

@@ -79,6 +79,15 @@ function resolveSourceTreeIconPath(
   ext: keyof DesktopIconPaths,
 ): string | undefined {
   if (environment.isPackaged || ext === "icns") return undefined;
+  if (environment.iconTheme === "dracula") {
+    const fileName =
+      ext === "ico"
+        ? "windows.ico"
+        : environment.platform === "darwin"
+          ? "macos-1024.png"
+          : "universal-1024.png";
+    return environment.path.join(environment.rootDir, "assets", "dracula", fileName);
+  }
   const brand = environment.isDevelopment ? "dev" : "prod";
   const fileNames = sourceTreeIconFileNames[brand];
   const fileName =
