@@ -137,9 +137,13 @@ export function useThreadActionMenu(input: {
         isPinned: thread.pinnedAt != null,
         isGroupPinned:
           thread.pinnedAt != null &&
+          getClientSettings().customSettingsEnabled &&
+          getClientSettings().sidebarGroupByProject &&
           getClientSettings().sidebarGroupPinnedThreadKeys.includes(scopedThreadKey(threadRef)),
         groupPinningEnabled:
-          getClientSettings().sidebarGroupByProject && !getClientSettings().legacySidebarEnabled,
+          getClientSettings().customSettingsEnabled &&
+          getClientSettings().sidebarGroupByProject &&
+          !getClientSettings().legacySidebarEnabled,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),

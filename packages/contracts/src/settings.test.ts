@@ -424,3 +424,37 @@ describe("Sidebar fork settings", () => {
     expect(() => decodeClientSettingsPatch({ confirmThreadUnpin: "yes" })).toThrow();
   });
 });
+
+describe("custom settings", () => {
+  it("enables custom features for existing installations without changing their choices", () => {
+    const settings = decodeClientSettings({
+      sidebarGroupByProject: false,
+      sidebarSortByStatus: true,
+      sidebarProjectAttentionIndicator: false,
+    });
+    expect(settings.customSettingsEnabled).toBe(true);
+    expect(settings.sidebarGroupByProject).toBe(false);
+    expect(settings.sidebarSortByStatus).toBe(true);
+    expect(settings.sidebarProjectAttentionIndicator).toBe(false);
+  });
+
+  it("persists the master toggle independently of individual settings", () => {
+    const saved = decodeClientSettings({
+      sidebarGroupByProject: true,
+      sidebarSortByStatus: false,
+      sidebarGroupPinnedThreadKeys: ["env:thread"],
+    });
+    const disabled = decodeClientSettings({
+      ...saved,
+      ...decodeClientSettingsPatch({ customSettingsEnabled: false }),
+    });
+    expect(disabled.customSettingsEnabled).toBe(false);
+    expect(decodeClientSettings(encodeClientSettings(disabled))).toEqual(disabled);
+    expect(
+      decodeClientSettings({
+        ...disabled,
+        ...decodeClientSettingsPatch({ customSettingsEnabled: true }),
+      }),
+    ).toEqual(saved);
+  });
+});
