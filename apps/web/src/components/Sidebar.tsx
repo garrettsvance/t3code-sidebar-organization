@@ -80,7 +80,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 import { type AnyRouter, useRouter } from "@tanstack/react-router";
 
 import {
@@ -3566,14 +3565,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 isDropTarget={dragTargetSection === "settled"}
                                 toggle={{
                                   expanded: settledShelfExpanded,
-                                  onToggle: () => {
-                                    flushSync(toggleSettledShelf);
-                                    if (!settledShelfExpanded) {
-                                      threadListRef.current?.lastElementChild?.scrollIntoView({
-                                        block: "nearest",
-                                      });
-                                    }
-                                  },
+                                  onToggle: toggleSettledShelf,
                                 }}
                               />,
                             );
