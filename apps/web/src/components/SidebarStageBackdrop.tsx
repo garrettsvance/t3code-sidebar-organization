@@ -1,12 +1,9 @@
-import { useAtomValue } from "@effect/atom-react";
 import { useId } from "react";
 
-import { APP_STAGE_LABEL } from "../branding";
-import { resolveServerBackedAppStageLabel } from "../branding.logic";
-import { primaryServerConfigAtom } from "../state/server";
+import { useClientSettings } from "../hooks/useSettings";
 
 export type SidebarStageBackdropVariant = "nightly" | "dev";
-export type EnvironmentIdentificationPillLabel = "Dev" | "Nightly";
+export type EnvironmentIdentificationPillLabel = "Dev" | "Nightly" | "Custom";
 
 const STAGE_BACKDROP_VIEW_BOX = "0 0 8192 96";
 
@@ -25,19 +22,15 @@ export function resolveEnvironmentIdentificationPillLabel(
   stageLabel: string,
 ): EnvironmentIdentificationPillLabel | null {
   const normalized = stageLabel.trim().toLowerCase();
+  if (normalized === "custom") return "Custom";
   if (normalized === "dev") return "Dev";
   if (normalized === "nightly") return "Nightly";
   return null;
 }
 
 export function useEnvironmentStageLabel(): string {
-  const primaryServerVersion =
-    useAtomValue(primaryServerConfigAtom)?.environment.serverVersion ?? null;
-
-  return resolveServerBackedAppStageLabel({
-    primaryServerVersion,
-    fallbackStageLabel: APP_STAGE_LABEL,
-  });
+  const customSettingsEnabled = useClientSettings((settings) => settings.customSettingsEnabled);
+  return customSettingsEnabled ? "Custom" : "";
 }
 
 export function useSidebarStageBackdropVariant(enabled = true): SidebarStageBackdropVariant | null {

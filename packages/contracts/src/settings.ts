@@ -439,6 +439,7 @@ export const ClientSettingsSchema = Schema.Struct({
   sidebarWorkingShelfEnabled: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
+  customSettingsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sidebarGroupByProject: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sidebarSortByStatus: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sidebarProjectAttentionIndicator: Schema.Boolean.pipe(
@@ -1676,6 +1677,7 @@ export const ClientSettingsPatch = Schema.Struct({
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarWorkingShelfEnabled: Schema.optionalKey(Schema.Boolean),
+  customSettingsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarGroupByProject: Schema.optionalKey(Schema.Boolean),
   sidebarSortByStatus: Schema.optionalKey(Schema.Boolean),
   sidebarProjectAttentionIndicator: Schema.optionalKey(Schema.Boolean),

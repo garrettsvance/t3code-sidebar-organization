@@ -3,6 +3,14 @@
 Use a new thread for a separate task. Choose **New worktree** when its code changes
 need a separate branch and working directory.
 
+## Custom sidebar features
+
+On web and desktop, **Settings → Custom** contains this build's project grouping,
+project attention indicators, and status sorting. Custom settings are enabled by
+default. Turning them off preserves your individual choices and saved group order
+for when you turn them back on. The sidebar identifies the build as **Custom**
+while enabled; **Settings → Appearance → Environment identification** can hide the label.
+
 ## Start a thread
 
 On web and desktop, a new thread keeps the current project and carries your model

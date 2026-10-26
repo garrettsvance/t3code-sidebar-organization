@@ -285,3 +285,14 @@ describe("source control host search items", () => {
     );
   });
 });
+
+it("finds custom controls in their owning settings page", () => {
+  for (const query of [
+    "Custom settings",
+    "Group by project",
+    "Sort by status",
+    "Project attention indicator",
+  ]) {
+    expect(searchSettings(query)[0]?.to).toBe("/settings/custom");
+  }
+});

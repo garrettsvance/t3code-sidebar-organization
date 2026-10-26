@@ -404,8 +404,10 @@ function useSidebarThreads(input: {
     projectGroupInfoByKey,
   } = input;
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
-  const groupByProject = useClientSettings((s) => s.sidebarGroupByProject);
-  const sortByStatus = useClientSettings((s) => s.sidebarSortByStatus);
+  const groupByProject = useClientSettings(
+    (s) => s.customSettingsEnabled && s.sidebarGroupByProject,
+  );
+  const sortByStatus = useClientSettings((s) => s.customSettingsEnabled && s.sidebarSortByStatus);
   const groupPinnedThreadKeys = useClientSettings((s) => s.sidebarGroupPinnedThreadKeys);
   const groupPinnedKeySet = new Set(groupPinnedThreadKeys);
   const savedProjectGroupOrder = useClientSettings((s) => s.sidebarProjectGroupOrder);
@@ -1015,7 +1017,9 @@ function projectGroupKeyAtY(list: HTMLElement, clientY: number, draggedKey: stri
 }
 
 export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
-  const showProjectAttention = useClientSettings((s) => s.sidebarProjectAttentionIndicator);
+  const showProjectAttention = useClientSettings(
+    (s) => s.customSettingsEnabled && s.sidebarProjectAttentionIndicator,
+  );
   const {
     projects,
     serverConfigs,
@@ -2737,8 +2741,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 : null,
               isPinned,
               isGroupPinned:
-                isPinned && getClientSettings().sidebarGroupPinnedThreadKeys.includes(threadKey),
-              groupPinningEnabled: getClientSettings().sidebarGroupByProject,
+                isPinned &&
+                getClientSettings().customSettingsEnabled &&
+                getClientSettings().sidebarGroupByProject &&
+                getClientSettings().sidebarGroupPinnedThreadKeys.includes(threadKey),
+              groupPinningEnabled:
+                getClientSettings().customSettingsEnabled &&
+                getClientSettings().sidebarGroupByProject,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,

@@ -167,6 +167,27 @@ describe("client settings hydration", () => {
 });
 
 describe("persistClientSettingsPatch", () => {
+  it("preserves custom choices and pins when the master toggle is switched off and on", async () => {
+    const saved = {
+      ...DEFAULT_CLIENT_SETTINGS,
+      sidebarGroupByProject: false,
+      sidebarSortByStatus: true,
+      sidebarProjectAttentionIndicator: false,
+      sidebarGroupPinnedThreadKeys: ["env:thread"],
+      sidebarProjectGroupOrder: ["project"],
+    };
+    __setClientSettingsForTests(saved);
+    await persistClientSettingsPatch({ customSettingsEnabled: false });
+    expect(getClientSettings()).toEqual({ ...saved, customSettingsEnabled: false });
+    expect(persistenceMocks.setClientSettings).toHaveBeenLastCalledWith({
+      ...saved,
+      customSettingsEnabled: false,
+    });
+    await persistClientSettingsPatch({ customSettingsEnabled: true });
+    expect(getClientSettings()).toEqual(saved);
+    expect(persistenceMocks.setClientSettings).toHaveBeenLastCalledWith(saved);
+  });
+
   it("waits for settings writes in request order", async () => {
     __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
     let finishFirst!: () => void;

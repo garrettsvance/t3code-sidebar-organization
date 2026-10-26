@@ -5,7 +5,6 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
-  type DesktopUpdateChannel,
   IDLE_COMPACTION_MODES,
   globalIdleCompaction,
   ProviderDriverKind,
@@ -24,7 +23,7 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
-import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
+import { APP_VERSION, HOSTED_APP_CHANNEL } from "../../branding";
 import { CliCommandSettingsRow } from "./CliCommandSettingsRow";
 import { MobileAppSettingsRow } from "./MobileAppSettingsRow";
 import {
@@ -38,7 +37,6 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
-import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import {
   readAppearanceModePreference,
   readThemeHalves,
@@ -146,40 +144,9 @@ function AboutVersionTitle() {
 
 function AboutVersionSection() {
   const updateState = useDesktopUpdateState();
-  const [isChangingUpdateChannel, setIsChangingUpdateChannel] = useState(false);
   const [isUpdateActionPending, setIsUpdateActionPending] = useState(false);
 
   const hasDesktopBridge = typeof window !== "undefined" && Boolean(window.desktopBridge);
-  const selectedUpdateChannel = updateState?.channel ?? "latest";
-  const selectedHostedAppChannel = hasDesktopBridge ? null : HOSTED_APP_CHANNEL;
-
-  const handleUpdateChannelChange = (channel: DesktopUpdateChannel) => {
-    const bridge = window.desktopBridge;
-    if (
-      !bridge ||
-      typeof bridge.setUpdateChannel !== "function" ||
-      channel === selectedUpdateChannel
-    ) {
-      return;
-    }
-
-    setIsChangingUpdateChannel(true);
-    void bridge
-      .setUpdateChannel(channel)
-      .catch((error: unknown) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not change update track",
-            description: error instanceof Error ? error.message : "Update track change failed.",
-          }),
-        );
-      })
-      .finally(() => {
-        setIsChangingUpdateChannel(false);
-      });
-  };
-
   const handleButtonClick = async () => {
     const bridge = window.desktopBridge;
     if (!bridge) return;
@@ -309,67 +276,6 @@ function AboutVersionSection() {
           </Tooltip>
         }
       />
-      {hasDesktopBridge ? (
-        <SettingsRow
-          {...searchableSetting("update-track")}
-          description="Use stable releases or nightly builds. Switch back anytime."
-          control={
-            <Select
-              value={selectedUpdateChannel}
-              onValueChange={(value) => {
-                handleUpdateChannelChange(value as DesktopUpdateChannel);
-              }}
-            >
-              <SelectTrigger
-                size="sm"
-                className="w-full sm:w-40"
-                aria-label="Update track"
-                disabled={isChangingUpdateChannel}
-              >
-                <SelectValue>
-                  {selectedUpdateChannel === "nightly" ? "Nightly" : "Stable"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem hideIndicator value="latest">
-                  Stable
-                </SelectItem>
-                <SelectItem hideIndicator value="nightly">
-                  Nightly
-                </SelectItem>
-              </SelectPopup>
-            </Select>
-          }
-        />
-      ) : selectedHostedAppChannel ? (
-        <SettingsRow
-          {...searchableSetting("update-track")}
-          description="Switches the hosted app release channel."
-          control={
-            <Select
-              value={selectedHostedAppChannel}
-              onValueChange={(value) => {
-                if (value === selectedHostedAppChannel) return;
-                window.location.assign(
-                  buildHostedChannelSelectionUrl({ channel: value as HostedAppChannel }),
-                );
-              }}
-            >
-              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Update track">
-                <SelectValue>{HOSTED_APP_CHANNEL_LABEL}</SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem hideIndicator value="latest">
-                  Latest
-                </SelectItem>
-                <SelectItem hideIndicator value="nightly">
-                  Nightly
-                </SelectItem>
-              </SelectPopup>
-            </Select>
-          }
-        />
-      ) : null}
       {hasDesktopBridge ? <CliCommandSettingsRow /> : null}
     </>
   );
@@ -439,6 +345,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       : []),
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? ["Working section"]
+      : []),
+    ...(settings.customSettingsEnabled !== DEFAULT_UNIFIED_SETTINGS.customSettingsEnabled
+      ? ["Custom settings"]
       : []),
     ...(settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject
       ? ["Group by project"]
@@ -980,86 +889,6 @@ export function GeneralSettingsPanel() {
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
               aria-label="Snooze until limits reset"
-            />
-          }
-        />
-
-        <SettingsRow
-          {...searchableSetting("group-by-project")}
-          description="Group active threads under a colored header for their project. Drag a header to move its group. Active threads can't be dragged while this is on."
-          resetAction={
-            settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject ? (
-              <SettingResetButton
-                label="group by project"
-                onClick={() =>
-                  updateSettings({
-                    sidebarGroupByProject: DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.sidebarGroupByProject}
-              onCheckedChange={(checked) =>
-                updateSettings({ sidebarGroupByProject: Boolean(checked) })
-              }
-              aria-label="Group by project"
-            />
-          }
-        />
-
-        <SettingsRow
-          {...searchableSetting("project-attention-indicator")}
-          description="Show an exclamation mark on a project header when an active thread needs input or approval. Requires Group by project."
-          resetAction={
-            settings.sidebarProjectAttentionIndicator !==
-            DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator ? (
-              <SettingResetButton
-                label="project attention indicator"
-                onClick={() =>
-                  updateSettings({
-                    sidebarProjectAttentionIndicator:
-                      DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.sidebarProjectAttentionIndicator}
-              onCheckedChange={(checked) =>
-                updateSettings({ sidebarProjectAttentionIndicator: Boolean(checked) })
-              }
-              aria-label="Project attention indicator"
-            />
-          }
-        />
-
-        <SettingsRow
-          {...searchableSetting("sort-by-status")}
-          description="In the Active section, list threads that need your input first, then finished threads, then threads that are still working. Active threads can't be dragged while this is on."
-          resetAction={
-            settings.sidebarSortByStatus !== DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus ? (
-              <SettingResetButton
-                label="sort by status"
-                onClick={() =>
-                  updateSettings({
-                    sidebarSortByStatus: DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.sidebarSortByStatus}
-              onCheckedChange={(checked) =>
-                updateSettings({ sidebarSortByStatus: Boolean(checked) })
-              }
-              aria-label="Sort by status"
             />
           }
         />

@@ -43,7 +43,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     environmentIdentificationMode === "artwork",
   );
   const pillLabel =
-    environmentIdentificationMode === "pill"
+    environmentIdentificationMode === "pill" ||
+    (stageLabel === "Custom" && environmentIdentificationMode === "artwork")
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
       : null;
 

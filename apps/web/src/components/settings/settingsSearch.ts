@@ -21,6 +21,7 @@ import {
 
 export type SettingsPath =
   | "/settings/projects"
+  | "/settings/custom"
   | "/settings/general"
   | "/settings/diagnostics"
   | "/settings/appearance"
@@ -83,6 +84,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/projects": "Project",
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
+  "/settings/custom": "Custom",
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
@@ -370,21 +372,27 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta share guest invite link teammate watch t3 connect tunnel"],
   },
   {
+    id: "custom-settings",
+    title: "Custom settings",
+    to: "/settings/custom",
+    searchTerms: ["custom fork sidebar enable disable nightly version"],
+  },
+  {
     id: "group-by-project",
     title: "Group by project",
-    to: "/settings/general",
+    to: "/settings/custom",
     searchTerms: ["sidebar active threads sections headers color divider"],
   },
   {
     id: "project-attention-indicator",
     title: "Project attention indicator",
-    to: "/settings/general",
+    to: "/settings/custom",
     searchTerms: ["sidebar header group input approval waiting exclamation alert needs attention"],
   },
   {
     id: "sort-by-status",
     title: "Sort by status",
-    to: "/settings/general",
+    to: "/settings/custom",
     searchTerms: ["sidebar active threads order input waiting done working needs"],
   },
   {
@@ -596,13 +604,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
     searchTerms: ["about check for updates download install upgrade release"],
   },
-  {
-    id: "update-track",
-    title: "Update track",
-    to: "/settings/general",
-    searchTerms: ["release channel stable latest nightly prerelease"],
-    releaseChannelOnly: true,
-  },
+
   {
     id: "cli-command",
     title: "t3 command",
@@ -1072,6 +1074,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/diagnostics": "environment",
   "/settings/projects": "project",
   "/settings/general": null,
+  "/settings/custom": null,
   "/settings/appearance": null,
   "/settings/snap-shot": null,
   "/settings/keybindings": null,

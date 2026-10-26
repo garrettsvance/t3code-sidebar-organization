@@ -60,6 +60,10 @@ export function AppearanceSettingsPanel() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const environmentStageLabel = useEnvironmentStageLabel();
+  const identificationMode =
+    environmentStageLabel === "Custom" && settings.environmentIdentificationMode === "artwork"
+      ? "pill"
+      : settings.environmentIdentificationMode;
   const showEnvironmentIdentification =
     resolveEnvironmentIdentificationPillLabel(environmentStageLabel) !== null;
   const glassOpacityRatio =
@@ -201,7 +205,7 @@ export function AppearanceSettingsPanel() {
         {showEnvironmentIdentification ? (
           <SettingsRow
             {...searchableSetting("environment-identification")}
-            description="Choose how Dev and Nightly environments are identified."
+            description="Choose how this build is identified in the sidebar."
             resetAction={
               settings.environmentIdentificationMode !== DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE ? (
                 <SettingResetButton
@@ -216,7 +220,7 @@ export function AppearanceSettingsPanel() {
             }
             control={
               <Select
-                value={settings.environmentIdentificationMode}
+                value={identificationMode}
                 onValueChange={(value) => {
                   if (value === "artwork" || value === "pill" || value === "none") {
                     updateSettings({ environmentIdentificationMode: value });
@@ -228,16 +232,16 @@ export function AppearanceSettingsPanel() {
                   className="w-full sm:w-40"
                   aria-label="Environment identification"
                 >
-                  <SelectValue>
-                    {ENVIRONMENT_IDENTIFICATION_LABELS[settings.environmentIdentificationMode]}
-                  </SelectValue>
+                  <SelectValue>{ENVIRONMENT_IDENTIFICATION_LABELS[identificationMode]}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
-                  {Object.entries(ENVIRONMENT_IDENTIFICATION_LABELS).map(([value, label]) => (
-                    <SelectItem hideIndicator key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
+                  {Object.entries(ENVIRONMENT_IDENTIFICATION_LABELS)
+                    .filter(([value]) => environmentStageLabel !== "Custom" || value !== "artwork")
+                    .map(([value, label]) => (
+                      <SelectItem hideIndicator key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
                 </SelectPopup>
               </Select>
             }
