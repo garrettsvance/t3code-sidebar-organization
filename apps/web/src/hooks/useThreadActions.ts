@@ -707,7 +707,9 @@ export function useThreadActions() {
     ThreadUndo.invalidate("settle", scopedThreadKey(target));
     ThreadUndo.invalidate("snooze", scopedThreadKey(target));
     const key = scopedThreadKey(target);
-    const wasGroupPinned = getClientSettings().sidebarGroupPinnedThreadKeys.includes(key);
+    const wasGroupPinned =
+      opts.destination !== undefined &&
+      getClientSettings().sidebarGroupPinnedThreadKeys.includes(key);
     const setGroupPinned = (groupPinned: boolean) => {
       const keys = getClientSettings().sidebarGroupPinnedThreadKeys.filter(
         (entry) => entry !== key,

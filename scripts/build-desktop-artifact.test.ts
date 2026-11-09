@@ -1,4 +1,4 @@
-import { resolveDesktopBuildIconAssets } from "./build-desktop-artifact";
+import { resolveDesktopBuildIconAssets } from "./build-desktop-artifact.ts";
 // @effect-diagnostics nodeBuiltinImport:off - Tests use Node's glob matcher to verify electron-builder exclusions.
 import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
