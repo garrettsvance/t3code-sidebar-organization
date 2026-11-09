@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -21,6 +22,9 @@ APP = Path.home() / "Applications/T3 Code Sidebar.app"
 DATA_HOME = Path.home() / ".t3-sidebar"
 BUNDLE_ID = "com.garrettsvance.t3code.sidebar"
 FORK = "github.com:garrettsvance/t3code-sidebar-organization.git"
+UPSTREAM_URLS = ("https://github.com/pingdotgg/t3code.git", "git@github.com:pingdotgg/t3code.git")
+STABLE_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
+MIGRATIONS = "apps/server/src/persistence/Migrations"
 
 
 class UpdateError(Exception):
@@ -63,7 +67,7 @@ def preflight(repo, setup, app):
     return branch
 
 
-def publish_source(repo, branch, message):
+def commit_source(repo, message):
     changes = git(repo, "status", "--short")
     if changes:
         print("Source changes to commit and push:\n" + changes, flush=True)
@@ -72,6 +76,54 @@ def publish_source(repo, branch, message):
         message = message or "chore(desktop): update sidebar app"
         run("git", "-C", repo, "add", "--all")
         run("git", "-C", repo, "commit", "-m", message)
+
+
+def latest_stable_tag(repo):
+    tags = git(repo, "tag", "--list", "v*", "--merged", "refs/remotes/upstream/main").split()
+    stable = [(tuple(map(int, match.groups())), tag) for tag in tags if (match := STABLE_TAG.fullmatch(tag))]
+    if not stable:
+        raise UpdateError("No stable release tag (vX.Y.Z) found on upstream/main.")
+    return max(stable)[1]
+
+
+def merge_upstream(repo):
+    """Merge the newest stable upstream release into HEAD; return its tag. Aborts cleanly on conflicts."""
+    try:
+        url = git(repo, "remote", "get-url", "upstream")
+    except subprocess.CalledProcessError:
+        raise UpdateError("No 'upstream' remote; add the official T3 Code repository first.")
+    if url not in UPSTREAM_URLS:
+        raise UpdateError(f"upstream must be the official T3 Code repository; found {url}")
+    print("Fetching upstream releases…", flush=True)
+    run("git", "-C", repo, "fetch", "upstream", "--tags")
+    tag = latest_stable_tag(repo)
+    ref = f"refs/tags/{tag}"
+    if subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", ref, "HEAD"]).returncode == 0:
+        print(f"Already includes upstream {tag}.", flush=True)
+        return tag
+    head = git(repo, "rev-parse", "HEAD")
+    backup = f"backup/sidebar-before-upstream-{datetime.date.today():%Y%m%d}-{head[:8]}"
+    if subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"refs/heads/{backup}"],
+                      capture_output=True).returncode != 0:
+        run("git", "-C", repo, "branch", backup, head)
+    added = git(repo, "diff", "--name-only", "--diff-filter=A", f"HEAD...{ref}", "--", MIGRATIONS)
+    if added:
+        print(f"Warning: upstream {tag} adds database migrations; the app cannot be downgraded afterwards:\n{added}", flush=True)
+    print(f"Merging upstream {tag} (restore point: {backup})…", flush=True)
+    merge = subprocess.run(["git", "-C", str(repo), "merge", "--no-ff", "-m", f"chore: merge upstream T3 {tag}", ref])
+    if merge.returncode != 0:
+        conflicts = git(repo, "diff", "--name-only", "--diff-filter=U")
+        subprocess.run(["git", "-C", str(repo), "merge", "--abort"], check=False, capture_output=True)
+        raise UpdateError(
+            f"Merging upstream {tag} failed; the merge was aborted and nothing was pushed or built.\n"
+            f"Conflicting files:\n{conflicts or '(none reported)'}\n"
+            f"Resolve with `git merge {ref}`, commit the result, then rerun the updater."
+        )
+    return tag
+
+
+def publish_source(repo, branch, message):
+    commit_source(repo, message)
     sha = git(repo, "rev-parse", "HEAD")
     print(f"Pushing {branch} to origin before building…", flush=True)
     run("git", "-C", repo, "push", "origin", f"HEAD:refs/heads/{branch}")
@@ -206,13 +258,34 @@ def install_app(prepared, app, setup, stamp):
     return previous
 
 
+LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+
+def retire_bundles(previous, prepared):
+    """Keep only the installed app; Launch Services lists every same-ID bundle as another app."""
+    build = prepared.parent.parent
+    for leftover in (previous, prepared):
+        subprocess.run([LSREGISTER, "-u", str(leftover)], check=False, capture_output=True)
+    for leftover in (previous.parent, build / "updater-prepared", build / "release"):
+        # Best effort: the new app is already installed and must still be reported and reopened.
+        shutil.rmtree(leftover, ignore_errors=True)
+
+
 def install_launcher(repo):
     launcher = Path.home() / "Applications/Update T3 Code Sidebar.command"
     launcher.parent.mkdir(parents=True, exist_ok=True)
+    # Keep a hand-added git SSH setting (the push needs it) when regenerating the launcher.
+    previous = launcher.read_text().splitlines() if launcher.is_file() else []
+    ssh = "".join(line + "\n" for line in previous if line.startswith("export GIT_SSH_COMMAND="))
     launcher.write_text(
         '#!/bin/zsh\n'
+        + ssh +
         'export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.cargo/bin:$PATH"\n'
-        f'{shlex.quote(sys.executable)} {shlex.quote(str(repo / "scripts/update-sidebar.py"))}\n'
+        'sidebar_args=()\n'
+        'printf "Merge the newest stable upstream T3 release first? [y/N] "\n'
+        'read -r sidebar_upstream\n'
+        'case "$sidebar_upstream" in [Yy]*) sidebar_args=(--upstream) ;; esac\n'
+        f'{shlex.quote(sys.executable)} {shlex.quote(str(repo / "scripts/update-sidebar.py"))} "${{sidebar_args[@]}}"\n'
         'sidebar_result=$?\n'
         'printf "\\nPress Return to close this window."\n'
         'read -r sidebar_reply\n'
@@ -226,6 +299,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Read-only setup check; no commit, push, build, or install")
     parser.add_argument("--install-launcher", action="store_true", help="Install the double-click launcher only")
+    parser.add_argument("--upstream", action="store_true", help="Merge the newest stable upstream T3 release before building")
     parser.add_argument("--message", help="Commit message; otherwise ask when there are local changes")
     parser.add_argument("--no-open", action="store_true", help="Leave Sidebar closed after installation")
     args = parser.parse_args()
@@ -235,7 +309,8 @@ def main():
     branch = preflight(REPO, SETUP, APP)
     if args.check:
         print(f"Ready: {REPO}\nPush: origin/{branch}\nApp: {APP}\nData: {DATA_HOME}")
-        print("Plan: commit → push → build Dracula variant → quit → backup → sign/replace → reopen")
+        merge_step = "merge newest stable upstream release → " if args.upstream else ""
+        print(f"Plan: commit → {merge_step}push → build Dracula variant → quit → backup → sign/replace → reopen")
         print(git(REPO, "status", "--short") or "Source is clean.")
         return
     env = dict(os.environ)
@@ -248,6 +323,10 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise UpdateError("Another Sidebar updater is already running.")
+        upstream_tag = None
+        if args.upstream:
+            commit_source(REPO, args.message)
+            upstream_tag = merge_upstream(REPO)
         sha = publish_source(REPO, branch, args.message)
         prepared = build_app(SETUP, REPO, env, sha)
         wait_for_close(DATA_HOME)
@@ -256,10 +335,13 @@ def main():
         ensure_closed(DATA_HOME)
         require_clean_source(REPO, sha)
         previous = install_app(prepared, APP, SETUP, stamp)
-        receipt = {"commit": sha, "branch": branch, "app": str(APP), "previous_app": str(previous), "data_backup": str(backup)}
+        retire_bundles(previous, prepared)
+        receipt = {"commit": sha, "branch": branch, "app": str(APP), "data_backup": str(backup)}
+        if upstream_tag:
+            receipt["upstream_tag"] = upstream_tag
         receipt_path = SETUP / "last-update.json"
         receipt_path.write_text(json.dumps(receipt, indent=2) + "\n")
-        print(f"\nSidebar updated to {sha[:12]}.\nData backup: {backup}\nPrevious app: {previous}", flush=True)
+        print(f"\nSidebar updated to {sha[:12]}" + (f" (upstream {upstream_tag})" if upstream_tag else "") + f".\nData backup: {backup}", flush=True)
         if not args.no_open:
             run("open", APP)
 
