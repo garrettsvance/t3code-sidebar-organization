@@ -121,7 +121,10 @@ export function useThreadActionMenu(input: {
       const api = readLocalApi();
       if (!api) return;
       const thread = readThreadShell(threadRef);
-      if (!thread) return;
+      if (!thread) {
+        failureToast("Thread actions unavailable", new Error("This thread has not loaded yet."));
+        return;
+      }
       const now = new Date();
       const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
       const supports = {
@@ -147,7 +150,6 @@ export function useThreadActionMenu(input: {
         groupPinningEnabled:
           getClientSettings().customSettingsEnabled &&
           getClientSettings().sidebarGroupByProject &&
-          !getClientSettings().legacySidebarEnabled &&
           !getClientSettings().boringSidebarEnabled,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
