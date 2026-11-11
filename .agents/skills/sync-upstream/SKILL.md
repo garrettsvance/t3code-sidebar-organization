@@ -1,13 +1,13 @@
 ---
 name: sync-upstream
-description: Merge the newest stable upstream T3 Code release (pingdotgg/t3code) into Garrett's Sidebar fork. Analyzes what upstream changed against the fork's customizations, resolves conflicts, asks when the intent is unclear, verifies, then hands off to the local updater. Use when he says "sync upstream", "merge the latest T3", "update the fork", or "pull in T3 v0.1.x".
+description: Merge the newest stable upstream T3 Code release (pingdotgg/t3code) into Garrett's Sidebar fork. Analyzes what upstream changed against the fork's customizations, resolves conflicts, asks when the intent is unclear, verifies, then runs the local updater once Sidebar is quit. Use when he says "sync upstream", "merge the latest T3", "update the fork", or "pull in T3 v0.1.x".
 ---
 
 # Sync upstream into the Sidebar fork
 
 Fork: `~/github/t3code-sidebar-organization`, branch `sidebar-project-groups`, remotes `origin` (his fork) and `upstream` (pingdotgg). Only stable `vX.Y.Z` tags are merged; nightly and preview tags are ignored. The merge target is always the newest stable tag, which also covers any skipped releases.
 
-Hard rules: never force push, never open a PR, never touch `~/.t3` or `~/.t3-sidebar` data, never kill processes by pattern, and never run the updater (push + quit Sidebar + replace the app) without his explicit go-ahead.
+Hard rules: never force push, never open a PR, never touch `~/.t3` or `~/.t3-sidebar` data, never kill processes by pattern, and never quit Sidebar for him. The updater pushes `origin` and replaces the app; run it only as step 4 describes.
 
 ## 1. Analyze (read-only)
 
@@ -37,12 +37,36 @@ Textual cleanliness is not enough. Past merges needed follow-up fixes where upst
 From the repo root, after `vp i` if the analyzer flagged dependency changes (and no `.t3/setup-running` marker exists):
 
 - `vp run typecheck` inside `apps/web`, `packages/contracts`, `packages/client-runtime` and `apps/desktop`. Fix breakage in the fork's code, not upstream's.
-- Run the tests for what the fork owns, not the repo: `vp test run $(git diff --name-only <merge-base> <pre-merge-HEAD> -- '*.test.ts' '*.test.tsx' '*.test.mjs')`, and `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_update_sidebar.py'`. Never `vp check` or any `-r` run (AGENTS.md).
+- Run the tests for what the fork owns, not the repo: `git diff --name-only <merge-base> <pre-merge-HEAD> -- '*.test.ts' '*.test.tsx' '*.test.mjs' | xargs vp test run` (the shell is zsh, which does not word-split `$(...)` held in a variable), and `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_update_sidebar.py'`. Never `vp check` or any `-r` run (AGENTS.md).
 - Re-run `analyze.py --no-fetch --anchors-at HEAD` to confirm the build anchors hold in the merged tree.
 - The fork's settings (`packages/contracts/src/settings.ts`, `CustomSettingsPanel`) must still be registered where upstream now expects settings (search index, scope sentence, nav). Spot-check those files since upstream is actively reworking settings.
 
 Commit any fix-ups as `fix: adapt Sidebar … to upstream <tag>`, with the commit trailer from the session's attribution reminder.
 
-## 4. Hand off
+## 4. Install
 
-Report: tag merged, conflicts and how each was resolved (flag the ones he decided), migration warning, verification results, and the backup branch name. Then stop and tell him how to install; do not run the updater from this session. It pushes `origin`, builds, backs up data, then refuses to swap the app until Sidebar is quit, and it needs a terminal to wait on. If this session runs inside Sidebar, quitting Sidebar ends the session mid-update. Instead tell him: once active turns finish, double-click `~/Applications/Update T3 Code Sidebar.command` (answer `N` to the merge prompt, since the merge is already committed), or run `python3 scripts/update-sidebar.py` in Terminal; quit Sidebar when it asks. Do not pass `--upstream`. He may ask you to run `python3 scripts/update-sidebar.py --check` first, which is read-only and safe anywhere. If he is running the skill from outside Sidebar (the original app or Terminal) and asks you to run the updater, that works, with his explicit go-ahead.
+Report first: tag merged, conflicts and how each was resolved (flag the ones he decided), migration warning, verification results, and the backup branch name.
+
+1. **Is this session inside Sidebar?** Quitting Sidebar would end the session mid-update, so check the process ancestry:
+
+   ```sh
+   p=$$; while [ "$p" -gt 1 ]; do ps -o comm= -p $p | grep -q 'T3 Code Sidebar.app' && echo INSIDE; p=$(ps -o ppid= -p $p | tr -d ' '); done
+   ```
+
+   If it prints `INSIDE`, do not run the updater. Tell him: once active turns finish, double-click `~/Applications/Update T3 Code Sidebar.command` (answer `N` to the merge prompt, since the merge is already committed), and quit Sidebar when it asks. Stop there.
+
+2. **Is Sidebar running?** Reuse the updater's own check, which covers both the app and its recorded server process:
+
+   ```sh
+   python3 -I -B -c "import importlib.util as u; s=u.spec_from_file_location('m','scripts/update-sidebar.py'); m=u.module_from_spec(s); s.loader.exec_module(m); m.ensure_closed(m.DATA_HOME); print('CLOSED')"
+   ```
+
+   `CLOSED` means go to 3. An `UpdateError` means it is still running: ask with AskUserQuestion to finish active turns and quit Sidebar normally, with options "Sidebar is quit, run the updater" and "Not now". On the first, re-run the check (it may take a few seconds for the server to shut down; ask again if it is still up). On "Not now", give him the manual install instructions from 1 and stop.
+
+3. **Run the updater** in the background (the build takes minutes; you are notified when it exits):
+
+   ```sh
+   python3 scripts/update-sidebar.py --message "chore: update Sidebar to upstream <tag>"
+   ```
+
+   Never pass `--upstream` (the merge is done). It commits anything left, pushes `origin`, builds, backs up `~/.t3-sidebar`, swaps the app and reopens Sidebar. Because its stdin is not a terminal, it exits instead of waiting if Sidebar was reopened in the meantime; go back to 2. When it finishes, report the commit, the data backup path it printed, and any failure verbatim.
