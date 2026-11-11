@@ -45,6 +45,17 @@ def anchors(ref):
     return rows
 
 
+def report_anchors(at):
+    print(f"\nBuild overlay anchors (setup build.py patches these exact strings) at {at}:")
+    bad = 0
+    for path, old, count, want in anchors(at):
+        ok = count == want
+        bad += not ok
+        print(f"  {'ok ' if ok else 'BAD'} {count}/{want}  {path}: {old}")
+    if bad:
+        print(f"  {bad} anchor(s) will make build.py fail; build.py needs updating after the merge.")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("tag", nargs="?")
@@ -66,6 +77,8 @@ def main():
 
     if git("merge-base", "--is-ancestor", ref, "HEAD", check=False).returncode == 0:
         print(f"\nAlready includes {tag}. Nothing to merge.")
+        if args.anchors_at:
+            report_anchors(args.anchors_at)
         return
     newer = [t for _, t in tags if git("merge-base", "--is-ancestor", f"refs/tags/{t}", "HEAD", check=False).returncode != 0]
     print(f"Unmerged stable releases: {', '.join(newer)}")
@@ -102,15 +115,7 @@ def main():
             print(f"Upstream changed dependency inputs ({name}...): run `vp i` after merging.")
             break
 
-    at = args.anchors_at or ref
-    print(f"\nBuild overlay anchors (setup build.py patches these exact strings) at {at}:")
-    bad = 0
-    for path, old, count, want in anchors(at):
-        ok = count == want
-        bad += not ok
-        print(f"  {'ok ' if ok else 'BAD'} {count}/{want}  {path}: {old}")
-    if bad:
-        print(f"  {bad} anchor(s) will make build.py fail; build.py needs updating after the merge.")
+    report_anchors(args.anchors_at or ref)
 
 
 if __name__ == "__main__":
