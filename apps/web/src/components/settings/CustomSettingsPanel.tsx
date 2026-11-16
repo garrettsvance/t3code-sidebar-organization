@@ -17,7 +17,7 @@ export function CustomSettingsPanel() {
       <SettingsSection id="custom" title="Custom">
         <SettingsRow
           {...searchableSetting("custom-settings")}
-          description="Enable this build's custom sidebar features and Custom label. Turning this off preserves your individual settings. This build is updated with the Sidebar updater, rather than the stable or nightly update track."
+          description="Enable this build's custom sidebar features and Custom label. Turning this off preserves your individual settings. Custom builds do not receive stable or nightly updates."
           resetAction={
             settings.customSettingsEnabled !== DEFAULT_CLIENT_SETTINGS.customSettingsEnabled ? (
               <SettingResetButton
