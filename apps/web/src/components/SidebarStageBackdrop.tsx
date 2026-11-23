@@ -25,14 +25,18 @@ export function resolveEnvironmentIdentificationPillLabel(
   stageLabel: string,
 ): EnvironmentIdentificationPillLabel | null {
   const normalized = stageLabel.trim().toLowerCase();
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "custom") return "Custom";
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "dev") return "Dev";
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "nightly") return "Nightly";
   return null;
 }
 
 export function useEnvironmentStageLabel(): string {
   const customSettingsEnabled = useClientSettings((settings) => settings.customSettingsEnabled);
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel name
   return customSettingsEnabled ? "Custom" : "";
 }
 
