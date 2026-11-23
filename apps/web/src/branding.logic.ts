@@ -28,7 +28,7 @@ export function resolveWebAppStageLabel(input: {
   );
 }
 
-export function resolveServerBackedAppStageLabel(input: {
+function resolveServerBackedAppStageLabel(input: {
   readonly primaryServerVersion: string | null | undefined;
   readonly fallbackStageLabel: string;
 }): string {
