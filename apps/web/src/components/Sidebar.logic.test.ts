@@ -11,6 +11,7 @@ import {
   groupThreadsByProject,
   moveProjectGroup,
   resolveProjectGroupOrder,
+  sortProjectGroupsBySend,
   resolveProjectGroupDragTarget,
   sortThreadsByStatusTier,
   getFallbackThreadIdAfterDelete,
@@ -1540,6 +1541,46 @@ describe("resolveSidebarRouteReveal", () => {
 });
 
 describe("Sidebar project groups", () => {
+  it("orders pinned projects first and ranks other groups by their latest send", () => {
+    const at = (hour: string) => `2026-11-23T${hour}:00:00.000Z`;
+    const threads = [
+      { id: "b-pin", projectId: "b", latestUserAuthoredMessageAt: at("01") },
+      { id: "b-idle", projectId: "b", latestUserAuthoredMessageAt: at("02") },
+      { id: "a-idle", projectId: "a", latestUserAuthoredMessageAt: at("03") },
+      { id: "b-working", projectId: "b", latestUserAuthoredMessageAt: at("04") },
+      { id: "c-idle", projectId: "c", latestUserAuthoredMessageAt: at("02") },
+      { id: "d-empty", projectId: "d", latestUserAuthoredMessageAt: null },
+    ].map((thread) => ({
+      ...thread,
+      id: ThreadId.make(thread.id),
+      environmentId: localEnvironmentId,
+      createdAt: at("05"),
+      latestRun: null,
+    }));
+    const arrange = (items: typeof threads) =>
+      sortProjectGroupsBySend(items, {
+        groupKeyOf: (thread) => thread.projectId,
+        isProjectPinned: (thread) => thread.projectId === "c",
+        isGroupPinned: (thread) => thread.id === "b-pin",
+      }).map((thread) => thread.id);
+
+    expect(arrange(threads)).toEqual([
+      "c-idle",
+      "b-pin",
+      "b-working",
+      "b-idle",
+      "a-idle",
+      "d-empty",
+    ]);
+    expect(
+      arrange(
+        threads.map((thread) =>
+          thread.id === "a-idle" ? { ...thread, latestUserAuthoredMessageAt: at("06") } : thread,
+        ),
+      ),
+    ).toEqual(["c-idle", "a-idle", "b-pin", "b-working", "b-idle", "d-empty"]);
+  });
+
   it("groups threads by project in order of each project's first thread", () => {
     const threads = ["a1", "b1", "a2", "c1", "b2"];
     expect(groupThreadsByProject(threads, (thread) => thread[0]!)).toEqual([

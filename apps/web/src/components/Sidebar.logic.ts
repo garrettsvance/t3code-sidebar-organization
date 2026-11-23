@@ -1,6 +1,10 @@
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import {
+  sortWorkingThreadsBySend,
+  type ThreadSendSortInput,
+} from "@t3tools/client-runtime/state/thread-inbox";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
@@ -641,6 +645,30 @@ export function groupThreadsByProject<T>(
   const orderedKeys = new Set(groupOrder);
   const rest = [...groups].filter(([key]) => !orderedKeys.has(key)).flatMap(([, group]) => group);
   return [...ordered, ...rest];
+}
+
+export function sortProjectGroupsBySend<T extends ThreadSendSortInput>(
+  threads: readonly T[],
+  options: {
+    readonly groupKeyOf: (thread: T) => string;
+    readonly isProjectPinned: (thread: T) => boolean;
+    readonly isGroupPinned: (thread: T) => boolean;
+  },
+): T[] {
+  const { groupKeyOf, isProjectPinned, isGroupPinned } = options;
+  const recent = sortWorkingThreadsBySend(threads, { includeCreationTime: false });
+  const pinnedGroups = new Set<string>();
+  const otherGroups = new Set<string>();
+  const pinnedThreads: T[] = [];
+  const otherThreads: T[] = [];
+  for (const thread of recent) {
+    (isProjectPinned(thread) ? pinnedGroups : otherGroups).add(groupKeyOf(thread));
+    (isGroupPinned(thread) ? pinnedThreads : otherThreads).push(thread);
+  }
+  return groupThreadsByProject([...pinnedThreads, ...otherThreads], groupKeyOf, [
+    ...pinnedGroups,
+    ...otherGroups,
+  ]);
 }
 
 // Saved order first, then groups the user has not placed yet by name. Never derived from thread

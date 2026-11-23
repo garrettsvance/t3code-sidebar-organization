@@ -498,6 +498,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarGroupByProject !== DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject
       ? ["Group by project"]
       : []),
+    ...(settings.sidebarFixedGroupLocation !== DEFAULT_UNIFIED_SETTINGS.sidebarFixedGroupLocation
+      ? ["Fixed Group Location"]
+      : []),
     ...(settings.sidebarSortByStatus !== DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus
       ? ["Sort by status"]
       : []),
@@ -680,6 +683,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
       sidebarGroupByProject: DEFAULT_UNIFIED_SETTINGS.sidebarGroupByProject,
+      sidebarFixedGroupLocation: DEFAULT_UNIFIED_SETTINGS.sidebarFixedGroupLocation,
       sidebarSortByStatus: DEFAULT_UNIFIED_SETTINGS.sidebarSortByStatus,
       sidebarProjectAttentionIndicator: DEFAULT_UNIFIED_SETTINGS.sidebarProjectAttentionIndicator,
       sidebarProjectGroupOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupOrder,
@@ -879,7 +883,7 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("working-shelf")}
-          description="Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you. The boring sidebar in Labs has no Working section."
+          description="Fold working and monitoring threads into a Working section. They return to the inbox when they need you. The boring sidebar and automatic custom project grouping keep working threads in their groups."
           resetAction={
             settings.sidebarWorkingShelfEnabled !==
             DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled ? (

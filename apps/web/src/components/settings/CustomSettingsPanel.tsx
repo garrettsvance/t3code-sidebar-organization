@@ -42,7 +42,7 @@ export function CustomSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("group-by-project")}
-          description="Group active threads under a colored header for their project. Drag a header to move its group. Active threads can't be dragged while this is on."
+          description="Group active threads under a colored header for their project."
           resetAction={
             settings.sidebarGroupByProject !== DEFAULT_CLIENT_SETTINGS.sidebarGroupByProject ? (
               <SettingResetButton
@@ -63,6 +63,34 @@ export function CustomSettingsPanel() {
                 updateSettings({ sidebarGroupByProject: Boolean(checked) })
               }
               aria-label="Group by project"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("fixed-group-location")}
+          description="Keep project groups in your saved order and drag their headers to rearrange them. When off, groups and their chats follow your most recent sends."
+          resetAction={
+            settings.sidebarFixedGroupLocation !==
+            DEFAULT_CLIENT_SETTINGS.sidebarFixedGroupLocation ? (
+              <SettingResetButton
+                label="fixed group location"
+                onClick={() =>
+                  updateSettings({
+                    sidebarFixedGroupLocation: DEFAULT_CLIENT_SETTINGS.sidebarFixedGroupLocation,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              disabled={!settings.customSettingsEnabled || !settings.sidebarGroupByProject}
+              checked={settings.sidebarFixedGroupLocation}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarFixedGroupLocation: Boolean(checked) })
+              }
+              aria-label="Fixed Group Location"
             />
           }
         />
@@ -98,7 +126,7 @@ export function CustomSettingsPanel() {
 
         <SettingsRow
           {...searchableSetting("sort-by-status")}
-          description="In the Active section, list threads that need your input first, then finished threads, then threads that are still working. Active threads can't be dragged while this is on."
+          description="List threads that need your input first, then finished threads, then working threads. Applies when project grouping is off or Fixed Group Location is on."
           resetAction={
             settings.sidebarSortByStatus !== DEFAULT_CLIENT_SETTINGS.sidebarSortByStatus ? (
               <SettingResetButton

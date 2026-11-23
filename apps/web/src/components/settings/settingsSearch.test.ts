@@ -364,6 +364,7 @@ it("finds custom controls in their owning settings page", () => {
   for (const query of [
     "Custom settings",
     "Group by project",
+    "Fixed Group Location",
     "Sort by status",
     "Project attention indicator",
   ]) {

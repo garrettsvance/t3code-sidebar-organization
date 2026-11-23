@@ -11,6 +11,12 @@ default. Turning them off preserves your individual choices and saved group orde
 for when you turn them back on. The sidebar identifies the build as **Custom**
 while enabled; **Settings → Appearance → Environment identification** can hide the label.
 
+Project groups and their threads are ordered by when you last sent a message.
+Pinned projects appear first, and chats pinned to a group stay at the top of that
+group. Working threads stay with their project while they respond. Turn on
+**Settings → Custom → Fixed Group Location** to restore your saved group order
+and drag group headers to rearrange them.
+
 ## Start a thread
 
 On web and desktop, **New thread** opens the project picker when you have more than one
@@ -151,6 +157,9 @@ the pinned section.
 This is on by default. Turn it off with **Settings → General → Working section** on web and desktop,
 or **Settings → General → Working section** on iOS and Android. Each device keeps its own
 choice.
+
+On web and desktop, the Working section is hidden while custom project groups
+are ordered by your latest sends.
 
 While this is on, the active list is ordered by when each thread last came back to you, so you
 cannot drag or move threads within it. Your saved order returns when you turn it off.

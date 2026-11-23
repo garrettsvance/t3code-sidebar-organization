@@ -514,6 +514,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sidebar active threads sections headers color divider"],
   },
   {
+    id: "fixed-group-location",
+    title: "Fixed Group Location",
+    to: "/settings/custom",
+    searchTerms: ["sidebar project group order drag move manual recent message send"],
+  },
+  {
     id: "project-attention-indicator",
     title: "Project attention indicator",
     to: "/settings/custom",

@@ -555,11 +555,17 @@ describe("Sidebar fork settings", () => {
     expect(defaults.sidebarSortByStatus).toBe(true);
     expect(decodeClientSettings({ sidebarSortByStatus: false }).sidebarSortByStatus).toBe(false);
     expect(defaults.sidebarProjectGroupOrder).toEqual([]);
+    expect(defaults.sidebarFixedGroupLocation).toBe(false);
+    expect(
+      decodeClientSettings({ sidebarFixedGroupLocation: true }).sidebarFixedGroupLocation,
+    ).toBe(true);
     const patch = decodeClientSettingsPatch({
       sidebarSortByStatus: false,
+      sidebarFixedGroupLocation: true,
       sidebarProjectGroupOrder: ["b", "a"],
     });
     expect(patch.sidebarSortByStatus).toBe(false);
+    expect(patch.sidebarFixedGroupLocation).toBe(true);
     expect(patch.sidebarProjectGroupOrder).toEqual(["b", "a"]);
   });
 

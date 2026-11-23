@@ -73,17 +73,20 @@ export function sortInboxThreadsByReturn<T extends InboxThreadInput>(
   return sortNewestFirst(threads, timestamps);
 }
 
-type WorkingSortInput = Pick<
+export type ThreadSendSortInput = Pick<
   EnvironmentThreadShell,
   "id" | "environmentId" | "createdAt" | "latestRun" | "latestUserAuthoredMessageAt"
 >;
 
-export function sortWorkingThreadsBySend<T extends WorkingSortInput>(threads: readonly T[]): T[] {
+export function sortWorkingThreadsBySend<T extends ThreadSendSortInput>(
+  threads: readonly T[],
+  { includeCreationTime = true }: { readonly includeCreationTime?: boolean } = {},
+): T[] {
   const timestamps = new Map(
     threads.map((thread) => [
       thread,
       Math.max(
-        toSortableTimestamp(thread.createdAt) ?? 0,
+        (includeCreationTime ? toSortableTimestamp(thread.createdAt) : null) ?? 0,
         toSortableTimestamp(
           (thread.latestUserAuthoredMessageAt === undefined
             ? thread.latestRun?.requestedAt

@@ -171,6 +171,7 @@ describe("persistClientSettingsPatch", () => {
     const saved = {
       ...DEFAULT_CLIENT_SETTINGS,
       sidebarGroupByProject: false,
+      sidebarFixedGroupLocation: true,
       sidebarSortByStatus: true,
       sidebarProjectAttentionIndicator: false,
       sidebarGroupPinnedThreadKeys: ["env:thread"],

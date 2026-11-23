@@ -208,6 +208,7 @@ import {
   moveProjectGroup,
   resolveProjectGroupOrder,
   resolveProjectGroupDragTarget,
+  sortProjectGroupsBySend,
   sortThreadsByStatusTier,
   resolveSidebarThreadStatus,
   sidebarListItemId,
@@ -367,8 +368,7 @@ interface SidebarThreadPartitionInput {
   readonly connectedEnvironmentIds: readonly EnvironmentId[];
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
-  /** Boring mode: folders list active threads by the user's latest message. */
-  readonly sortActiveBySend: boolean;
+  readonly activeOrder: "default" | "project-groups" | "send";
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
@@ -453,12 +453,17 @@ function useSidebarThreads(input: {
     folderGroups,
     keepEmptyFolders: keepEmpty,
   } = input;
-  // Folders already separate the work, so boring mode has no Working shelf.
-  const workingShelfEnabled =
-    useClientSettings((s) => s.sidebarWorkingShelfEnabled) && folderGroups === null;
   const groupByProject = useClientSettings(
     (s) => s.customSettingsEnabled && s.sidebarGroupByProject && folderGroups === null,
   );
+  const fixedGroupLocation = useClientSettings((s) => s.sidebarFixedGroupLocation);
+  const automaticGroupOrder = groupByProject && !fixedGroupLocation;
+  const canReorderProjectGroups = groupByProject && fixedGroupLocation;
+  // Working threads stay inside their projects when grouping by send time.
+  const workingShelfEnabled =
+    useClientSettings((s) => s.sidebarWorkingShelfEnabled) &&
+    folderGroups === null &&
+    !automaticGroupOrder;
   const sortByStatus = useClientSettings(
     (s) => s.customSettingsEnabled && s.sidebarSortByStatus && folderGroups === null,
   );
@@ -508,7 +513,11 @@ function useSidebarThreads(input: {
     connectedEnvironmentIds,
     optimisticDrop,
     workingShelfEnabled,
-    sortActiveBySend: folderGroups !== null,
+    activeOrder: automaticGroupOrder
+      ? "project-groups"
+      : folderGroups !== null
+        ? "send"
+        : "default",
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -523,17 +532,33 @@ function useSidebarThreads(input: {
   // next sort.
   const lockActiveOrder = groupByProject || sortByStatus;
   const { activeThreads, projectGroupOrder } = (() => {
+    const groupInfoOf = (thread: EnvironmentThreadShell) =>
+      projectGroupInfoByKey.get(`${thread.environmentId}:${thread.projectId}`);
+    const groupKeyOf = (thread: EnvironmentThreadShell) =>
+      sidebarProjectGroupKey(projectGroupInfoByKey, thread);
+    const isGroupPinned = (thread: EnvironmentThreadShell) =>
+      thread.pinnedAt != null && groupByProject && groupPinnedKeySet.has(threadShellKey(thread));
+    if (automaticGroupOrder) {
+      return {
+        activeThreads: sortProjectGroupsBySend(
+          [...groupPinnedThreads, ...partition.activeThreads],
+          {
+            groupKeyOf,
+            isGroupPinned,
+            isProjectPinned: (thread) => groupInfoOf(thread)?.pinned ?? false,
+          },
+        ),
+        projectGroupOrder: [],
+      };
+    }
     const unpinned = sortByStatus
       ? sortThreads(partition.activeThreads, "updated_at")
       : partition.activeThreads;
     const recent = sortThreadsByStatusTier([...groupPinnedThreads, ...unpinned], {
-      isGroupPinned: (thread) =>
-        thread.pinnedAt != null && groupByProject && groupPinnedKeySet.has(threadShellKey(thread)),
+      isGroupPinned,
       sortByStatus,
     });
     if (!groupByProject) return { activeThreads: recent, projectGroupOrder: [] };
-    const groupKeyOf = (thread: EnvironmentThreadShell) =>
-      sidebarProjectGroupKey(projectGroupInfoByKey, thread);
     const present = new Map(
       recent.map((thread) => {
         const key = groupKeyOf(thread);
@@ -541,9 +566,7 @@ function useSidebarThreads(input: {
           key,
           {
             key,
-            label:
-              projectGroupInfoByKey.get(`${thread.environmentId}:${thread.projectId}`)
-                ?.displayName ?? key,
+            label: groupInfoOf(thread)?.displayName ?? key,
           },
         ] as const;
       }),
@@ -645,6 +668,7 @@ function useSidebarThreads(input: {
     activeReorderableThreadKeys,
     draggableThreadKeys,
     groupByProject,
+    canReorderProjectGroups,
     projectGroupOrder,
     threads,
     workingShelfEnabled,
@@ -712,7 +736,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
-    sortActiveBySend,
+    activeOrder,
   } = input;
   const preciseNow = new Date().toISOString();
   const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, delegatedUnderParent);
@@ -770,11 +794,18 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   }
   // Availability gates dragging only; sorting must stay consistent across clients.
   const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-  const sortedActive = sortActiveBySend
-    ? sortWorkingThreadsBySend(active)
-    : workingShelfEnabled
-      ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-      : sortThreadsForSidebar(active);
+  const sortedActive = (() => {
+    switch (activeOrder) {
+      case "project-groups":
+        return active;
+      case "send":
+        return sortWorkingThreadsBySend(active);
+      case "default":
+        return workingShelfEnabled
+          ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
+          : sortThreadsForSidebar(active);
+    }
+  })();
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
@@ -787,7 +818,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads:
-      optimisticDrop?.section !== "active" || optimisticDrop.order === null
+      activeOrder === "project-groups" ||
+      optimisticDrop?.section !== "active" ||
+      optimisticDrop.order === null
         ? sortedActive
         : orderItemsByPreferredIds({
             items: sortedActive,
@@ -900,6 +933,7 @@ interface SidebarProjectGroupInfo {
   readonly groupKey: string;
   readonly displayName: string;
   readonly color: ProjectIconColor;
+  readonly pinned: boolean;
 }
 
 function useSidebarLookups() {
@@ -929,6 +963,7 @@ function useSidebarLookups() {
       const info: SidebarProjectGroupInfo = {
         groupKey: group.projectKey,
         displayName: group.displayName,
+        pinned: group.pinned,
         color:
           group.projectIcon?.kind === "monogram" || group.projectIcon?.kind === "lucide"
             ? group.projectIcon.color
@@ -1023,16 +1058,18 @@ function SidebarProjectGroupHeader(props: {
   divided: boolean;
   dragging: boolean;
   reordering: boolean;
-  onPointerDown: (event: ReactPointerEvent<HTMLElement>, groupKey: string) => void;
+  onPointerDown: ((event: ReactPointerEvent<HTMLElement>, groupKey: string) => void) | undefined;
 }) {
   const colorClass = projectIconColorClassName(props.color);
+  const { onPointerDown, groupKey } = props;
   return (
     <li
       data-testid="sidebar-project-group-header"
       data-project-group-key={props.groupKey}
-      onPointerDown={(event) => props.onPointerDown(event, props.groupKey)}
+      onPointerDown={onPointerDown && ((event) => onPointerDown(event, groupKey))}
       className={cn(
-        "group/project-group mx-0.5 touch-none cursor-grab active:cursor-grabbing list-none select-none transition-[margin,padding] duration-200 ease-drawer motion-reduce:transition-none",
+        "group/project-group mx-0.5 list-none select-none transition-[margin,padding] duration-200 ease-drawer motion-reduce:transition-none",
+        onPointerDown && "touch-none cursor-grab active:cursor-grabbing",
         props.divided && "border-t border-sidebar-border",
         props.reordering
           ? props.divided
@@ -1047,9 +1084,8 @@ function SidebarProjectGroupHeader(props: {
       <div
         className={cn(
           "flex items-center rounded-sm bg-current/10 transition-[height,gap,padding,scale] duration-200 ease-drawer motion-reduce:transition-none",
-          props.reordering
-            ? "h-12 gap-3 px-3"
-            : "h-6 gap-1.5 px-2 group-hover/project-group:scale-102",
+          props.reordering ? "h-12 gap-3 px-3" : "h-6 gap-1.5 px-2",
+          onPointerDown && !props.reordering && "group-hover/project-group:scale-102",
           colorClass,
         )}
       >
@@ -1573,6 +1609,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     pinnedKeysById,
     activeKeysById,
     groupByProject,
+    canReorderProjectGroups,
     projectGroupOrder,
   } = useSidebarThreads({
     projectScopeKey,
@@ -2183,7 +2220,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (gesture?.order != null) listMotionRef.current?.captureLayout();
     setDraggedProjectGroupKey(null);
     setProjectGroupPreviewOrder(null);
-    if (commit && gesture?.order != null) {
+    if (commit && canReorderProjectGroups && gesture?.order != null) {
       void updateClientSettings({ sidebarProjectGroupOrder: gesture.order });
     }
   });
@@ -2227,6 +2264,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to window pointer and cancellation events for project group dragging
   useEffect(() => {
     const cancel = () => endProjectGroupDrag(false);
+    if (!canReorderProjectGroups) {
+      cancel();
+      return;
+    }
     const release = (event: PointerEvent) => {
       if (projectGroupGestureRef.current?.pointerId !== event.pointerId) return;
       const rect = threadListRef.current?.getBoundingClientRect();
@@ -2262,7 +2303,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       window.removeEventListener("blur", cancel);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [endProjectGroupDrag, moveProjectGroupDrag]);
+  }, [canReorderProjectGroups, endProjectGroupDrag, moveProjectGroupDrag]);
   const hasProjectFolders = projectFolders !== null && projectFolders.length > 0;
   const sidebarListItemsFresh = ((): readonly SidebarListItem[] => {
     const rowsOf = (
@@ -2290,7 +2331,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
     const previewThreads =
-      projectGroupPreviewOrder === null
+      !canReorderProjectGroups || projectGroupPreviewOrder === null
         ? activeThreads
         : groupThreadsByProject(
             activeThreads,
@@ -3841,7 +3882,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                   groupKey={groupKey}
                                   dragging={draggedProjectGroupKey === groupKey}
                                   reordering={draggedProjectGroupKey !== null}
-                                  onPointerDown={handleProjectGroupPointerDown}
+                                  onPointerDown={
+                                    canReorderProjectGroups
+                                      ? handleProjectGroupPointerDown
+                                      : undefined
+                                  }
                                   label={info.displayName}
                                   count={activeGroupCounts.get(groupKey) ?? 0}
                                   needsAttention={attentionGroupKeys.has(groupKey)}
